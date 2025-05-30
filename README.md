@@ -1,6 +1,11 @@
-## Attendance Customization
+# Attendance Customization
 
-Custom fields and logic for Attendance tracking
+Custom fields for Attendance tracking
+
+## Features
+- Late Strike Count
+- Late Incident Remark
+- Strike Processed flag
 
 #### License
 
