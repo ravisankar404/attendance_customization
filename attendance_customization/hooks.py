@@ -219,24 +219,24 @@ app_license = "MIT"
 # ---------------
 # Hook on document methods and events
 
-doc_events = {
-    "Attendance": {
-        "validate": "attendance_customization.attendance_customization.doctype_events.attendance.validate",
-        "on_submit": "attendance_customization.attendance_customization.doctype_events.attendance.on_submit"
-    }
-}
+# doc_events = {
+#     "Attendance": {
+#         "validate": "attendance_customization.attendance_customization.doctype_events.attendance.validate",
+#         "on_submit": "attendance_customization.attendance_customization.doctype_events.attendance.on_submit"
+#     }
+# }
 
 # Scheduled Tasks
 # ---------------
 
-scheduler_events = {
-    "daily": [
-        "attendance_customization.attendance_customization.tasks.daily_late_strike_processor"
-    ],
-    "monthly": [
-        "attendance_customization.attendance_customization.tasks.monthly_strike_reset"
-    ]
-}
+# scheduler_events = {
+#     "daily": [
+#         "attendance_customization.attendance_customization.tasks.daily_late_strike_processor"
+#     ],
+#     "monthly": [
+#         "attendance_customization.attendance_customization.tasks.monthly_strike_reset"
+#     ]
+# }
 
 # Testing
 # -------
