@@ -1,8 +1,9 @@
-
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 def execute():
+    """Add custom fields to Attendance DocType"""
+    
     custom_fields = {
         "Attendance": [
             {
@@ -12,14 +13,16 @@ def execute():
                 "insert_after": "early_exit",
                 "description": "Count of late arrivals within current month",
                 "default": 0,
-                "in_list_view": 1
+                "in_list_view": 1,
+                "translatable": 0
             },
             {
                 "fieldname": "late_incident_remark",
                 "label": "Late Incident Remark",
                 "fieldtype": "Small Text",
                 "insert_after": "late_strike_count",
-                "description": "Remark to specify incidents clearly (e.g., '3rd late arrival in May 2025')"
+                "description": "Remark to specify incidents clearly (e.g., '3rd late arrival in May 2025')",
+                "translatable": 0
             },
             {
                 "fieldname": "strike_processed",
@@ -27,14 +30,11 @@ def execute():
                 "fieldtype": "Check",
                 "insert_after": "late_incident_remark",
                 "description": "Flag to indicate if this attendance entry has been evaluated by the scheduler",
-                "default": 0
+                "default": 0,
+                "translatable": 0
             }
         ]
     }
     
     create_custom_fields(custom_fields)
     frappe.db.commit()
-
-
-
-

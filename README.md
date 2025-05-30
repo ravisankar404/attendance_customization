@@ -1,6 +1,6 @@
 ## Attendance Customization
 
-this testing
+Custom fields and logic for Attendance tracking
 
 #### License
 

@@ -3,7 +3,7 @@ name = "attendance_customization"
 authors = [
     { name = "ravi", email = "ravi@campx.in"}
 ]
-description = "this testing"
+description = "Custom fields and logic for Attendance tracking"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
