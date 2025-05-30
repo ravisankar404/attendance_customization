@@ -1,7 +1,7 @@
 app_name = "attendance_customization"
 app_title = "Attendance Customization"
 app_publisher = "ravi"
-app_description = "custom fields for attendance traking"
+app_description = "this testing"
 app_email = "ravi@campx.in"
 app_license = "MIT"
 

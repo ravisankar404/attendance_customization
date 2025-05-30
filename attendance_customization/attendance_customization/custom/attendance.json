@@ -1,0 +1,39 @@
+{
+  "custom_fields": [
+    {
+      "dt": "Attendance",
+      "fieldname": "late_strike_count",
+      "fieldtype": "Int",
+      "label": "Late Strike Count",
+      "insert_after": "early_exit",
+      "description": "Count of late arrivals within current month",
+      "default": "0",
+      "read_only": 0,
+      "in_list_view": 1
+    },
+    {
+      "dt": "Attendance",
+      "fieldname": "late_incident_remark",
+      "fieldtype": "Small Text",
+      "label": "Late Incident Remark",
+      "insert_after": "late_strike_count",
+      "description": "Remark to specify incidents clearly (e.g., '3rd late arrival in May 2025')",
+      "read_only": 0
+    },
+    {
+      "dt": "Attendance",
+      "fieldname": "strike_processed",
+      "fieldtype": "Check",
+      "label": "Strike Processed",
+      "insert_after": "late_incident_remark",
+      "description": "Flag to indicate if this attendance entry has been evaluated by the scheduler",
+      "default": "0",
+      "read_only": 0
+    }
+  ],
+  "custom_perms": [],
+  "doctype": "Attendance",
+  "properties": [],
+  "property_setters": [],
+  "links": []
+}
