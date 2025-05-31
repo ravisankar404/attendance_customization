@@ -309,3 +309,17 @@ fixtures = [
         ]
     }
 ]
+
+
+# Scheduled Tasks
+scheduler_events = {
+    "daily": [
+        "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
+    ],
+    "cron": {
+        # Run at 2 AM daily
+        "0 2 * * *": [
+            "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
+        ]
+    }
+}
