@@ -66,6 +66,7 @@ def on_attendance_validate(doc, method):
     # Set the count
     doc.late_strike_count = late_count
     
+    
     # Debug log
     frappe.log_error(
         f"Employee: {doc.employee}, Date: {doc.attendance_date}, Late Count: {late_count}, Is Late: {doc.late_entry}, Doc Name: {doc.name}",
