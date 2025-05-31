@@ -55,6 +55,7 @@ def process_employee_late_strikes(employee, policy):
         process_consecutive_strikes(employee, policy, month_start, yesterday)
 
 
+
 def process_cumulative_strikes(employee, policy, start_date, end_date):
     """Process cumulative late strikes - total count in the period."""
     
@@ -65,25 +66,31 @@ def process_cumulative_strikes(employee, policy, start_date, end_date):
     late_dates = list(set([att['attendance_date'] for att in late_attendances]))
     late_count = len(late_dates)
     
-    # Check if penalty threshold is reached
-    if late_count >= policy.strike_threshold:
-        # Find the attendance record for the threshold day
+    # Check if penalty threshold is exceeded
+    # If strike_threshold = 4, penalty applies on 5th late entry (when count > 4)
+    if late_count > policy.strike_threshold:
+        # Sort dates to find which attendance to penalize
         late_dates.sort()
-        threshold_date = late_dates[policy.strike_threshold - 1]
         
-        # Get the attendance record for that date
-        attendance_name = frappe.db.get_value(
-            "Attendance",
-            {
-                "employee": employee,
-                "attendance_date": threshold_date,
-                "docstatus": 1
-            },
-            "name"
-        )
-        
-        if attendance_name:
-            apply_penalty(attendance_name, policy, late_count, threshold_date)
+        # Apply penalty to all late attendances after threshold
+        for i in range(policy.strike_threshold, len(late_dates)):
+            penalty_date = late_dates[i]
+            
+            # Get the attendance record for that date
+            attendance_name = frappe.db.get_value(
+                "Attendance",
+                {
+                    "employee": employee,
+                    "attendance_date": penalty_date,
+                    "docstatus": 1,
+                    "custom_late_penalty_applied": 0  # Only if penalty not already applied
+                },
+                "name"
+            )
+            
+            if attendance_name:
+                apply_penalty(attendance_name, policy, i + 1, penalty_date)
+
 
 
 def process_consecutive_strikes(employee, policy, start_date, end_date):
@@ -98,7 +105,7 @@ def process_consecutive_strikes(employee, policy, start_date, end_date):
             "docstatus": 1,
             "status": ["in", ["Present", "Half Day"]]  # Only working days
         },
-        fields=["name", "attendance_date", "late_entry", "status", "leave_type"],
+        fields=["name", "attendance_date", "late_entry", "status", "leave_type", "custom_late_penalty_applied"],
         order_by="attendance_date"
     )
     
@@ -106,17 +113,19 @@ def process_consecutive_strikes(employee, policy, start_date, end_date):
     consecutive_dates = []
     
     for attendance in all_attendances:
+        # Skip if penalty already applied
+        if attendance.get("custom_late_penalty_applied"):
+            continue
+            
         # Check if it's a late entry
         if attendance.get("late_entry"):
             consecutive_count += 1
-            consecutive_dates.append(attendance.attendance_date)
+            consecutive_dates.append(attendance)
             
-            # Check if threshold reached
-            if consecutive_count >= policy.strike_threshold:
+            # Check if threshold is exceeded
+            # If strike_threshold = 4, penalty applies on 5th consecutive late (when count > 4)
+            if consecutive_count > policy.strike_threshold:
                 apply_penalty(attendance.name, policy, consecutive_count, attendance.attendance_date)
-                # Reset count after applying penalty
-                consecutive_count = 0
-                consecutive_dates = []
         else:
             # Reset consecutive count if not late
             # But only if this is not a half-day for genuine shortage
@@ -167,12 +176,24 @@ def apply_penalty(attendance_name, policy, strike_count, attendance_date):
     """Apply penalty to the attendance record."""
     
     try:
+        # First check if penalty already applied
+        existing_doc = frappe.get_doc("Attendance", attendance_name)
+        
+        # Skip if penalty already applied
+        if hasattr(existing_doc, 'custom_late_penalty_applied') and existing_doc.custom_late_penalty_applied:
+            return
+            
+        # Store original status
+        original_status = existing_doc.status
+        
         # Cancel the existing attendance
-        attendance_doc = frappe.get_doc("Attendance", attendance_name)
-        attendance_doc.cancel()
+        existing_doc.cancel()
         
         # Create a new attendance record with penalty
-        new_attendance = frappe.copy_doc(attendance_doc)
+        new_attendance = frappe.copy_doc(existing_doc)
+        
+        # Store original status
+        new_attendance.custom_original_status = original_status
         
         # Apply penalty based on policy
         if policy.penalty_action == "Half-day":
@@ -184,12 +205,19 @@ def apply_penalty(attendance_name, policy, strike_count, attendance_date):
         month_name = calendar.month_name[attendance_date.month]
         year = attendance_date.year
         
-        remark = f"{strike_count}{'rd' if strike_count == 3 else 'th'} late arrival in {month_name} {year}"
+        # Proper ordinal suffix
+        def get_ordinal(n):
+            if 10 <= n % 100 <= 20:
+                suffix = 'th'
+            else:
+                suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+            return f"{n}{suffix}"
+        
+        remark = f"{get_ordinal(strike_count)} late arrival in {month_name} {year} - Penalty Applied"
         new_attendance.custom_remarks = remark
         
-        # Set penalty flag (you'll need to add this field to Attendance DocType)
-        if hasattr(new_attendance, 'custom_late_penalty_applied'):
-            new_attendance.custom_late_penalty_applied = 1
+        # Set penalty flag
+        new_attendance.custom_late_penalty_applied = 1
         
         # Submit the new record
         new_attendance.insert()
@@ -197,12 +225,12 @@ def apply_penalty(attendance_name, policy, strike_count, attendance_date):
         
         # Log the penalty application
         frappe.log_error(
-            f"Late penalty applied to {attendance_doc.employee_name} for {attendance_date}",
-            "Late Strike Penalty Applied"
+            message=f"Late penalty applied to {existing_doc.employee_name} for {attendance_date}. Strike #{strike_count}",
+            title="Late Strike Penalty Applied"
         )
         
         # Create a notification for HR
-        create_penalty_notification(attendance_doc.employee, attendance_doc.employee_name, 
+        create_penalty_notification(existing_doc.employee, existing_doc.employee_name, 
                                   attendance_date, strike_count, policy.penalty_action)
         
     except Exception as e:
