@@ -10,6 +10,9 @@ def on_attendance_validate(doc, method):
     On validate: Set late strike count based on current late entries.
     This shows the running count of late entries.
     """
+    # Debug log
+    frappe.log_error(f"Validate called for {doc.name}, Late Entry: {doc.late_entry}", "Attendance Validate Debug")
+    
     # Get policy settings
     try:
         policy = frappe.get_single("Attendance Policy Settings")
@@ -17,7 +20,13 @@ def on_attendance_validate(doc, method):
             # If policy is disabled, set count to 0
             doc.late_strike_count = 0
             return
-    except:
+    except Exception as e:
+        frappe.log_error(f"Error getting policy: {str(e)}", "Policy Error")
+        doc.late_strike_count = 0
+        return
+    
+    # Only count if late entry is checked
+    if not doc.late_entry:
         doc.late_strike_count = 0
         return
     
@@ -33,34 +42,34 @@ def on_attendance_validate(doc, method):
     }
     
     # If updating existing record, check if we need to exclude it
-    if not doc.is_new() and doc.name:
+    if not doc.is_new() and doc.name and doc.name != "New Attendance":
         # Get the original document to see if late_entry changed
-        if frappe.db.exists("Attendance", doc.name):
+        try:
             original = frappe.db.get_value("Attendance", doc.name, "late_entry")
             if original and not doc.late_entry:
                 # Late entry is being unchecked, exclude this record from count
                 filters["name"] = ["!=", doc.name]
+        except:
+            pass
     
     # Count late entries
-    late_count = frappe.db.count("Attendance", filters)
-    
-    # If this is a new late entry or late entry is being checked, add 1
-    if doc.late_entry:
-        if doc.is_new():
+    late_count = 0
+    try:
+        late_count = frappe.db.count("Attendance", filters)
+        
+        # If this is a new late entry, add 1
+        if doc.late_entry and (doc.is_new() or doc.name == "New Attendance"):
             late_count += 1
-        elif not doc.is_new() and doc.name:
-            # Check if late_entry was changed from False to True
-            original_late = frappe.db.get_value("Attendance", doc.name, "late_entry")
-            if not original_late:
-                late_count += 1
+    except Exception as e:
+        frappe.log_error(f"Error counting late entries: {str(e)}", "Count Error")
     
     # Set the count
     doc.late_strike_count = late_count
     
     # Debug log
     frappe.log_error(
-        f"Employee: {doc.employee}, Date: {doc.attendance_date}, Late Count: {late_count}, Is Late: {doc.late_entry}",
-        "Late Strike Count Update"
+        f"Employee: {doc.employee}, Date: {doc.attendance_date}, Late Count: {late_count}, Is Late: {doc.late_entry}, Doc Name: {doc.name}",
+        "Late Strike Count Debug"
     )
 
 
@@ -308,3 +317,25 @@ def check_and_fix_missing_penalties():
     # This would check all employees and apply missing penalties
     # Useful for fixing data after enabling the policy
     pass
+
+@frappe.whitelist()
+def get_employee_late_count(employee, date, exclude_current=None):
+    """Get late count for an employee up to a specific date."""
+    if not employee or not date:
+        return {"count": 0}
+    
+    month_start = get_first_day(getdate(date))
+    
+    filters = {
+        "employee": employee,
+        "attendance_date": ["between", [month_start, date]],
+        "late_entry": 1,
+        "docstatus": ["!=", 2]
+    }
+    
+    if exclude_current:
+        filters["name"] = ["!=", exclude_current]
+    
+    count = frappe.db.count("Attendance", filters)
+    
+    return {"count": count}
