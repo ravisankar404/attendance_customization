@@ -29,7 +29,10 @@ app_license = "MIT"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Attendance": "public/js/attendance.js"
+}
+
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -64,7 +67,7 @@ app_license = "MIT"
 # ------------
 
 # before_install = "attendance_customization.install.before_install"
-# after_install = "attendance_customization.install.after_install"
+after_install = "attendance_customization.setup.install.after_install"
 
 # Uninstallation
 # ------------
@@ -118,34 +121,27 @@ app_license = "MIT"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "Attendance": {
+        "validate": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_validate",
+        "on_submit": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_submit"
+    }
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"attendance_customization.tasks.all"
-# 	],
-# 	"daily": [
-# 		"attendance_customization.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"attendance_customization.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"attendance_customization.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"attendance_customization.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+    "daily": [
+        "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
+    ],
+    "cron": {
+        # Run at 2 AM daily
+        "0 2 * * *": [
+            "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
+        ]
+    }
+}
 
 # Testing
 # -------
@@ -215,111 +211,44 @@ app_license = "MIT"
 # auth_hooks = [
 # 	"attendance_customization.auth.validate"
 # ]
-# Document Events
-# ---------------
-# Hook on document methods and events
-
-# doc_events = {
-#     "Attendance": {
-#         "validate": "attendance_customization.attendance_customization.doctype_events.attendance.validate",
-#         "on_submit": "attendance_customization.attendance_customization.doctype_events.attendance.on_submit"
-#     }
-# }
-
-# Scheduled Tasks
-# ---------------
-
-# scheduler_events = {
-#     "daily": [
-#         "attendance_customization.attendance_customization.tasks.daily_late_strike_processor"
-#     ],
-#     "monthly": [
-#         "attendance_customization.attendance_customization.tasks.monthly_strike_reset"
-#     ]
-# }
-
-# Testing
-# -------
-
-# before_tests = "attendance_customization.install.before_tests"
-
-# Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "attendance_customization.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "attendance_customization.task.get_dashboard_data"
-# }
-
-# exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
-
-
-# User Data Protection
-# --------------------
-
-
-user_data_fields = [
-    {
-        "doctype": "{doctype_1}",
-        "filter_by": "{filter_by}",
-        "redact_fields": ["{field_1}", "{field_2}"],
-        "partial": 1,
-    },
-    {
-        "doctype": "{doctype_2}",
-        "filter_by": "{filter_by}",
-        "partial": 1,
-    },
-    {
-        "doctype": "{doctype_3}",
-        "strict": False,
-    },
-    {
-        "doctype": "{doctype_4}"
-    }
-]
-
-# Authentication and authorization
-# --------------------------------
-
-# auth_hooks = [
-# 	"attendance_customization.auth.validate"
-# ]
 
 # Fixtures
 # --------
+# Fixtures are used to export/import customizations
 fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            [
-                "dt", "in", ["Attendance"]
-            ],
-            [
-                "fieldname", "in", ["late_strike_count", "late_incident_remark", "strike_processed"]
-            ]
+            ["dt", "=", "Attendance"],
+            ["fieldname", "in", [
+                "late_strike_count", 
+                "late_incident_remark", 
+                "strike_processed",
+                "custom_late_penalty_applied",
+                "custom_original_status"
+            ]]
+        ]
+    },
+    {
+        "dt": "Property Setter",
+        "filters": [
+            ["doc_type", "=", "Attendance"]
+        ]
+    },
+    {
+        "dt": "DocType",
+        "filters": [
+            ["name", "=", "Attendance Policy Settings"]
         ]
     }
 ]
 
+# Single DocTypes (Settings pages)
+single_doctypes = ["Attendance Policy Settings"]
 
-# Scheduled Tasks
-scheduler_events = {
-    "daily": [
-        "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
-    ],
-    "cron": {
-        # Run at 2 AM daily
-        "0 2 * * *": [
-            "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
-        ]
-    }
-}
+
+
+# Add this section to your hooks.py
+after_migrate = [
+    "attendance_customization.attendance_customization.custom_fields.attendance_custom_fields.create_custom_fields"
+]
