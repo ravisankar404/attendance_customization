@@ -1,0 +1,86 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "prompt",
+  "creation": "2025-05-31 10:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "enable_late_penalty",
+    "strike_threshold",
+    "counting_mode",
+    "penalty_action"
+  ],
+  "fields": [
+    {
+      "default": "0",
+      "fieldname": "enable_late_penalty",
+      "fieldtype": "Check",
+      "label": "Enable Late Penalty"
+    },
+    {
+      "depends_on": "enable_late_penalty",
+      "description": "Number of late strikes before penalty is applied",
+      "fieldname": "strike_threshold",
+      "fieldtype": "Int",
+      "label": "Strike Threshold",
+      "mandatory_depends_on": "enable_late_penalty"
+    },
+    {
+      "depends_on": "enable_late_penalty",
+      "fieldname": "counting_mode",
+      "fieldtype": "Select",
+      "label": "Counting Mode",
+      "mandatory_depends_on": "enable_late_penalty",
+      "options": "Cumulative\nStrictly Consecutive"
+    },
+    {
+      "depends_on": "enable_late_penalty",
+      "fieldname": "penalty_action",
+      "fieldtype": "Select",
+      "label": "Penalty Action",
+      "mandatory_depends_on": "enable_late_penalty",
+      "options": "Half-day\nFull-day"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "issingle": 1,
+  "links": [],
+  "modified": "2025-05-31 10:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Attendance Customization",
+  "name": "Attendance Policy Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "HR Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "HR User"
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

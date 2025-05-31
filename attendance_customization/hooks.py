@@ -265,6 +265,7 @@ app_license = "MIT"
 # User Data Protection
 # --------------------
 
+
 user_data_fields = [
     {
         "doctype": "{doctype_1}",
