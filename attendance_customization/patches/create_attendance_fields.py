@@ -60,7 +60,9 @@ def execute():
             "fieldtype": "Int",
             "insert_after": "late_entry",
             "read_only": 1,
-            "default": 0
+            "default": 0,
+             "in_list_view": 0,  # Changed
+         "hidden": 1  # Added
         },
         {
             "dt": "Attendance",
@@ -68,7 +70,8 @@ def execute():
             "label": "Late Incident Remark",
             "fieldtype": "Text",
             "insert_after": "late_strike_count",
-            "read_only": 1
+            "read_only": 1,
+              "hidden": 1  # Added
         },
         {
             "dt": "Attendance",

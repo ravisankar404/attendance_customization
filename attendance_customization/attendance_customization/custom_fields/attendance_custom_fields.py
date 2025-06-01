@@ -10,7 +10,8 @@ def get_custom_fields():
                 "fieldtype": "Int",
                 "insert_after": "late_entry",
                 "read_only": 1,
-                "in_list_view": 1,
+                "in_list_view": 0,  # Changed from 1 to 0
+                "hidden": 1,  # Added this to hide
                 "description": "Count of late arrivals within current month",
                 "translatable": 0
             },
@@ -20,7 +21,6 @@ def get_custom_fields():
                 "fieldtype": "Text",
                 "insert_after": "late_strike_count",
                 "read_only": 1,
-                "description": "Remark to specify incidents clearly (e.g., '3rd late arrival in May 2025')",
                 "translatable": 0
             },
             {
@@ -29,6 +29,7 @@ def get_custom_fields():
                 "fieldtype": "Check",
                 "insert_after": "late_incident_remark",
                 "read_only": 1,
+                  "hidden": 1,
                 "description": "Flag to indicate if this attendance entry has been evaluated by the scheduler",
                 "translatable": 0
             },

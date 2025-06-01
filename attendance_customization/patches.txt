@@ -1,1 +1,3 @@
 attendance_customization.patches.create_attendance_fields
+attendance_customization.patches.hide_strike_fields
+attendance_customization.patches.update_remark_field

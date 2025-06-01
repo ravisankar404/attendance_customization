@@ -14,14 +14,14 @@ def execute():
                 "description": "Count of late arrivals within current month",
                 "default": 0,
                 "in_list_view": 1,
-                "translatable": 0
+                "translatable": 0,
+                 "hidden": 1 
             },
             {
                 "fieldname": "late_incident_remark",
                 "label": "Late Incident Remark",
                 "fieldtype": "Small Text",
                 "insert_after": "late_strike_count",
-                "description": "Remark to specify incidents clearly (e.g., '3rd late arrival in May 2025')",
                 "translatable": 0
             },
             {

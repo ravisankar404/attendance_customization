@@ -1,5 +1,12 @@
 frappe.ui.form.on("Attendance", {
   refresh: function (frm) {
+    if (frm.is_new()) {
+      frm.set_df_property("late_incident_remark", "hidden", 1);
+    } else {
+      // Show it when viewing existing attendance
+      frm.set_df_property("late_incident_remark", "hidden", 0);
+    }
+
     // Show late strike info
     if (frm.doc.late_entry && frm.doc.late_strike_count > 0) {
       frm.dashboard.add_comment(
