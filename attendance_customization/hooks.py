@@ -22,12 +22,12 @@ doctype_js = {
 # Document Events
 # ---------------
 # Hook on document methods and events
-doc_events = {
-    "Attendance": {
-        "validate": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_validate",
-        "on_submit": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_submit"
-    }
-}
+# doc_events = {
+#     "Attendance": {
+#         "validate": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_validate",
+#         "on_submit": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_submit"
+#     }
+# }
 
 # Scheduled Tasks
 # ---------------

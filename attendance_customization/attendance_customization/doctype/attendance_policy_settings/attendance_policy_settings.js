@@ -17,6 +17,53 @@ frappe.ui.form.on("Attendance Policy Settings", {
         ),
         "green"
       );
+
+      // Add reprocess button when late penalty is enabled and apply_from_date exists
+      if (frm.doc.apply_from_date) {
+        frm.add_custom_button(
+          __("Reprocess Attendance"),
+          function () {
+            frappe.confirm(
+              __(
+                "This will reprocess all attendance records from {0}. Continue?",
+                [frm.doc.apply_from_date]
+              ),
+              function () {
+                frappe.call({
+                  method:
+                    "attendance_customization.attendance_customization.tasks.late_strike_processor.reprocess_attendance_from_date",
+                  args: {
+                    from_date: frm.doc.apply_from_date,
+                  },
+                  freeze: true,
+                  freeze_message: __("Processing attendance records..."),
+                  callback: function (r) {
+                    if (r.message) {
+                      frappe.msgprint({
+                        title: __("Reprocess Complete"),
+                        message: r.message,
+                        indicator: "green",
+                      });
+                      // Refresh the form
+                      frm.reload_doc();
+                    }
+                  },
+                  error: function (r) {
+                    frappe.msgprint({
+                      title: __("Error"),
+                      message: __(
+                        "Failed to reprocess attendance records. Check error logs."
+                      ),
+                      indicator: "red",
+                    });
+                  },
+                });
+              }
+            );
+          },
+          __("Actions")
+        );
+      }
     }
   },
 
@@ -26,6 +73,7 @@ frappe.ui.form.on("Attendance Policy Settings", {
       frm.set_value("strike_threshold", "");
       frm.set_value("counting_mode", "");
       frm.set_value("penalty_action", "");
+      frm.set_value("apply_from_date", "");
     }
 
     // Refresh field properties
