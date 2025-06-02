@@ -42,7 +42,7 @@
       "fieldtype": "Select",
       "label": "Counting Mode",
       "mandatory_depends_on": "enable_late_penalty",
-      "options": "Cumulative\nStrictly Consecutive"
+      "options": "Cumulative\nStrictly Consecutive\nCumulative with Reset"
     },
     {
       "depends_on": "enable_late_penalty",

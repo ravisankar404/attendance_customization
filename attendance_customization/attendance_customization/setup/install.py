@@ -79,6 +79,7 @@ def create_all_custom_fields():
             "read_only": 1,
             "hidden": 1
         },
+     
         {
             "dt": "Attendance",
             "fieldname": "custom_is_genuine_half_day",
@@ -96,7 +97,18 @@ def create_all_custom_fields():
             "options": "\nGenuine Shortage\nLate Penalty\nPersonal Permission\nOther",
             "insert_after": "status",
             "depends_on": "eval:doc.status=='Half Day'"
-        }
+        },
+        {
+            "dt": "Attendance",
+            "fieldname": "custom_cumulative_reset_count",
+            "label": "Cumulative Reset Count",
+            "fieldtype": "Int",
+            "insert_after": "custom_is_genuine_half_day",
+            "hidden": 1,
+            "read_only": 1,
+            "default": 0,
+            "description": "Tracks the reset count for Cumulative with Reset mode"
+        },
     ]
     
     # Create each field

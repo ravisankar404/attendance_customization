@@ -105,6 +105,14 @@ frappe.ui.form.on("Attendance Policy Settings", {
         "description",
         __("Only consecutive late days trigger the penalty")
       );
+    } else if (frm.doc.counting_mode === "Cumulative with Reset") {
+      frm.set_df_property(
+        "counting_mode",
+        "description",
+        __(
+          "All late strikes are counted, but count resets to 0 after each penalty is applied."
+        )
+      );
     }
   },
 

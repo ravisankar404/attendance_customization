@@ -50,6 +50,12 @@ def execute():
             ALTER TABLE `tabAttendance` 
             ADD COLUMN `strike_processed` INT(1) DEFAULT 0
         """)
+
+    if "custom_cumulative_reset_count" not in columns:
+        frappe.db.sql("""
+            ALTER TABLE `tabAttendance` 
+            ADD COLUMN `custom_cumulative_reset_count` INT DEFAULT 0
+        """)
     
     # Now create the custom field records
     fields = [
@@ -116,6 +122,17 @@ def execute():
             "options": "\nGenuine Shortage\nLate Penalty\nPersonal Permission\nOther",
             "insert_after": "status",
             "depends_on": "eval:doc.status=='Half Day'"
+        },
+        {
+            "dt": "Attendance",
+            "fieldname": "custom_cumulative_reset_count",
+            "label": "Cumulative Reset Count",
+            "fieldtype": "Int",
+            "insert_after": "custom_is_genuine_half_day",
+            "hidden": 1,
+            "read_only": 1,
+            "default": 0,
+            "description": "Tracks the reset count for Cumulative with Reset mode"
         }
     ]
     

@@ -32,7 +32,7 @@ def process_employee_penalties(employee, policy):
         
         # Get all attendance for this month
         attendances = frappe.db.sql("""
-            SELECT name, attendance_date, status, late_entry, custom_late_penalty_applied
+            SELECT name, attendance_date, status, late_entry, custom_late_penalty_applied , custom_cumulative_reset_count
             FROM `tabAttendance`
             WHERE employee = %s
             AND attendance_date BETWEEN %s AND %s
@@ -41,10 +41,15 @@ def process_employee_penalties(employee, policy):
             ORDER BY attendance_date
         """, (employee, month_start, month_end), as_dict=True)
         
+       
+
+
         if policy.counting_mode == "Cumulative":
             apply_cumulative_penalties(employee, attendances, policy)
-        else:  # Strictly Consecutive
-            apply_consecutive_penalties(employee, attendances, policy)
+        elif policy.counting_mode == "Strictly Consecutive":
+             apply_consecutive_penalties(employee, attendances, policy)
+        elif policy.counting_mode == "Cumulative with Reset":
+              apply_cumulative_with_reset_penalties(employee, attendances, policy)     
         
         # Move to next month
         current_date = add_days(month_end, 1)
@@ -80,8 +85,43 @@ def apply_consecutive_penalties(employee, attendances, policy):
             # Reset count if not late (and not already a penalty)
             consecutive_count = 0
 
+def apply_cumulative_with_reset_penalties(employee, attendances, policy):
+    """Apply penalties based on cumulative count but reset to 0 after penalty."""
+    
+    late_count = 0
+    last_reset_count = 0
+    
+    # First, find the last reset count from previous penalties in this month
+    for att in attendances:
+        if att.get('custom_late_penalty_applied') and att.get('custom_cumulative_reset_count'):
+            last_reset_count = att.get('custom_cumulative_reset_count', 0)
+    
+    # Start counting from last reset or 0
+    late_count = last_reset_count
+    
+    for att in attendances:
+        # Skip already processed penalties
+        if att.get('custom_late_penalty_applied'):
+            continue
+            
+        if att.late_entry:
+            late_count += 1
+            
+            # Update the current late count on this attendance
+            frappe.db.set_value("Attendance", att.name, 
+                              "late_strike_count", late_count, update_modified=False)
+            
+            if late_count > policy.strike_threshold:
+                # Apply penalty with reset count
+                apply_penalty_to_attendance(att.name, policy, late_count, 
+                                          att.attendance_date, reset_count=1)
+                # Reset count to 1 after penalty
+                late_count = 0
 
-def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendance_date):
+
+
+                
+def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendance_date, reset_count=None):
     """Apply penalty to a specific attendance."""
     
     try:
@@ -110,11 +150,18 @@ def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendanc
             new_doc.custom_late_penalty_applied = 1
         if hasattr(new_doc, 'custom_original_status'):
             new_doc.custom_original_status = original_status
+
+        # Set reset count if using Cumulative with Reset mode
+        if reset_count is not None and hasattr(new_doc, 'custom_cumulative_reset_count'):
+            new_doc.custom_cumulative_reset_count = reset_count
         
         # Add remark
         month_name = calendar.month_name[attendance_date.month]
         year = attendance_date.year
         new_doc.late_incident_remark = f"Strike #{strike_count} in {month_name} {year} - {policy.penalty_action} penalty applied"
+
+        if reset_count is not None:
+            new_doc.late_incident_remark += f" (Count reset to {reset_count})"
         
         # Save and submit
         new_doc.insert()

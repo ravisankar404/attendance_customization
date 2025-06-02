@@ -44,37 +44,49 @@ def get_custom_fields():
                 "translatable": 0
             },
             {
-    "fieldname": "custom_half_day_type",
-    "label": "Half Day Type",
-    "fieldtype": "Select",
-    "options": "\nGenuine Shortage\nLate Penalty\nPersonal Permission\nOther",
-    "insert_after": "status",
-    "depends_on": "eval:doc.status=='Half Day'",
-    "description": "Reason for half day status"
-},
-{
-    "fieldname": "custom_is_genuine_half_day",
-    "label": "Is Genuine Half Day",
-    "fieldtype": "Check",
-    "insert_after": "custom_half_day_type",
-    "hidden": 1,
-    "description": "Flag to indicate if half-day is genuine (not penalty)"
-},
-            {
-                "fieldname": "custom_original_status",
-                "label": "Original Status",
+                "fieldname": "custom_half_day_type",
+                "label": "Half Day Type",
                 "fieldtype": "Select",
-                "options": "\nPresent\nAbsent\nOn Leave\nHalf Day\nWork From Home",
-                "insert_after": "custom_late_penalty_applied",
-                "read_only": 1,
-                "hidden": 1,
-                "description": "Original attendance status before penalty",
-                "translatable": 0
-            }
-        ]
+                "options": "\nGenuine Shortage\nLate Penalty\nPersonal Permission\nOther",
+                "insert_after": "status",
+                "depends_on": "eval:doc.status=='Half Day'",
+                "description": "Reason for half day status"
+             },
+             {
+                 "fieldname": "custom_is_genuine_half_day",
+                 "label": "Is Genuine Half Day",
+                 "fieldtype": "Check",
+                 "insert_after": "custom_half_day_type",
+                 "hidden": 1,
+                 "description": "Flag to indicate if half-day is genuine (not penalty)"
+             },
+             {
+                 "fieldname": "custom_original_status",
+                 "label": "Original Status",
+                 "fieldtype": "Select",
+                 "options": "\nPresent\nAbsent\nOn Leave\nHalf Day\nWork From Home",
+                 "insert_after": "custom_late_penalty_applied",
+                 "read_only": 1,
+                 "hidden": 1,
+                 "description": "Original attendance status before penalty",
+                 "translatable": 0
+             },
+             
+             {
+                 "fieldname": "custom_cumulative_reset_count",
+                 "label": "Cumulative Reset Count",
+                 "fieldtype": "Int",
+                 "insert_after": "custom_is_genuine_half_day",
+                 "hidden": 1,
+                 "read_only": 1,
+                 "default": 0,
+                 "description": "Tracks the reset count for Cumulative with Reset mode",
+                 "translatable": 0
+             }
+                ]
     }
-
-
+ 
+ 
 def create_custom_fields():
     """Create all custom fields for the app."""
     import frappe
