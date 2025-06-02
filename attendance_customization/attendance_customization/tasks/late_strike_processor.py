@@ -32,7 +32,7 @@ def process_employee_penalties(employee, policy):
         
         # Get all attendance for this month
         attendances = frappe.db.sql("""
-            SELECT name, attendance_date, status, late_entry, custom_late_penalty_applied , custom_cumulative_reset_count
+            SELECT name, attendance_date, status, late_entry, custom_late_penalty_applied
             FROM `tabAttendance`
             WHERE employee = %s
             AND attendance_date BETWEEN %s AND %s
@@ -41,15 +41,12 @@ def process_employee_penalties(employee, policy):
             ORDER BY attendance_date
         """, (employee, month_start, month_end), as_dict=True)
         
-       
-
-
         if policy.counting_mode == "Cumulative":
             apply_cumulative_penalties(employee, attendances, policy)
         elif policy.counting_mode == "Strictly Consecutive":
-             apply_consecutive_penalties(employee, attendances, policy)
+            apply_consecutive_penalties(employee, attendances, policy)
         elif policy.counting_mode == "Cumulative with Reset":
-              apply_cumulative_with_reset_penalties(employee, attendances, policy)     
+            apply_cumulative_with_reset_penalties(employee, attendances, policy)     
         
         # Move to next month
         current_date = add_days(month_end, 1)
@@ -62,6 +59,10 @@ def apply_cumulative_penalties(employee, attendances, policy):
     for att in attendances:
         if att.late_entry and not att.get('custom_late_penalty_applied'):
             late_count += 1
+            
+            # Update strike count
+            frappe.db.set_value("Attendance", att.name, 
+                              "late_strike_count", late_count, update_modified=False)
             
             if late_count > policy.strike_threshold:
                 apply_penalty_to_attendance(att.name, policy, late_count, att.attendance_date)
@@ -79,29 +80,26 @@ def apply_consecutive_penalties(employee, attendances, policy):
         if att.late_entry:
             consecutive_count += 1
             
+            # Update strike count
+            frappe.db.set_value("Attendance", att.name, 
+                              "late_strike_count", consecutive_count, update_modified=False)
+            
             if consecutive_count > policy.strike_threshold:
                 apply_penalty_to_attendance(att.name, policy, consecutive_count, att.attendance_date)
         else:
             # Reset count if not late (and not already a penalty)
             consecutive_count = 0
 
+
 def apply_cumulative_with_reset_penalties(employee, attendances, policy):
     """Apply penalties based on cumulative count but reset to 0 after penalty."""
     
     late_count = 0
-    last_reset_count = 0
-    
-    # First, find the last reset count from previous penalties in this month
-    for att in attendances:
-        if att.get('custom_late_penalty_applied') and att.get('custom_cumulative_reset_count'):
-            last_reset_count = att.get('custom_cumulative_reset_count', 0)
-    
-    # Start counting from last reset or 0
-    late_count = last_reset_count
     
     for att in attendances:
-        # Skip already processed penalties
+        # If this already has a penalty applied, we need to reset our count
         if att.get('custom_late_penalty_applied'):
+            late_count = 0
             continue
             
         if att.late_entry:
@@ -112,16 +110,14 @@ def apply_cumulative_with_reset_penalties(employee, attendances, policy):
                               "late_strike_count", late_count, update_modified=False)
             
             if late_count > policy.strike_threshold:
-                # Apply penalty with reset count
+                # Apply penalty
                 apply_penalty_to_attendance(att.name, policy, late_count, 
-                                          att.attendance_date, reset_count=1)
-                # Reset count to 1 after penalty
+                                          att.attendance_date)
+                # Reset count to 0 after penalty
                 late_count = 0
 
 
-
-                
-def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendance_date, reset_count=None):
+def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendance_date):
     """Apply penalty to a specific attendance."""
     
     try:
@@ -150,18 +146,18 @@ def apply_penalty_to_attendance(attendance_name, policy, strike_count, attendanc
             new_doc.custom_late_penalty_applied = 1
         if hasattr(new_doc, 'custom_original_status'):
             new_doc.custom_original_status = original_status
-
-        # Set reset count if using Cumulative with Reset mode
-        if reset_count is not None and hasattr(new_doc, 'custom_cumulative_reset_count'):
-            new_doc.custom_cumulative_reset_count = reset_count
+        
+        # Update the late_strike_count to the value that triggered the penalty
+        new_doc.late_strike_count = strike_count
         
         # Add remark
         month_name = calendar.month_name[attendance_date.month]
         year = attendance_date.year
-        new_doc.late_incident_remark = f"Strike #{strike_count} in {month_name} {year} - {policy.penalty_action} penalty applied"
-
-        if reset_count is not None:
-            new_doc.late_incident_remark += f" (Count reset to {reset_count})"
+        
+        if policy.counting_mode == "Cumulative with Reset":
+            new_doc.late_incident_remark = f"Strike #{strike_count} in {month_name} {year} - {policy.penalty_action} penalty applied (Count reset to 0)"
+        else:
+            new_doc.late_incident_remark = f"Strike #{strike_count} in {month_name} {year} - {policy.penalty_action} penalty applied"
         
         # Save and submit
         new_doc.insert()
@@ -184,6 +180,9 @@ def reprocess_attendance_from_date(from_date=None):
     if not policy.enable_late_penalty:
         return "Late penalty is disabled"
     
+    # First, clear all penalties from the reprocess date onwards
+    clear_penalties_from_date(from_date)
+    
     # Update the apply_from_date
     policy.apply_from_date = from_date
     policy.save()
@@ -199,3 +198,46 @@ def reprocess_attendance_from_date(from_date=None):
     })
     
     return f"Reprocessing completed. {penalty_count} penalties applied."
+
+
+def clear_penalties_from_date(from_date):
+    """Clear all penalties from a specific date onwards."""
+    
+    # Get all attendance records with penalties from the date
+    penalty_attendances = frappe.db.sql("""
+        SELECT name, custom_original_status
+        FROM `tabAttendance`
+        WHERE attendance_date >= %s
+        AND custom_late_penalty_applied = 1
+        AND docstatus = 1
+    """, from_date, as_dict=True)
+    
+    for att in penalty_attendances:
+        try:
+            # Get the document
+            doc = frappe.get_doc("Attendance", att.name)
+            
+            # Cancel it
+            doc.cancel()
+            
+            # Create new document without penalty
+            new_doc = frappe.copy_doc(doc)
+            
+            # Restore original status
+            if att.custom_original_status:
+                new_doc.status = att.custom_original_status
+            
+            # Clear penalty fields
+            new_doc.custom_late_penalty_applied = 0
+            new_doc.custom_original_status = None
+            new_doc.late_incident_remark = None
+            
+            # Insert and submit
+            new_doc.insert()
+            new_doc.submit()
+            
+        except Exception as e:
+            frappe.log_error(f"Error clearing penalty for {att.name}: {str(e)}", 
+                           "Clear Penalty Error")
+    
+    frappe.db.commit()
