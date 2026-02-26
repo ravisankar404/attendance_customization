@@ -29,6 +29,13 @@ doctype_js = {
 #     }
 # }
 
+# Override DocType Classes
+# ------------------------
+# Allow Leave Allocation for Leave Without Pay types (e.g. Loss of Pay)
+override_doctype_class = {
+    "Leave Allocation": "attendance_customization.doctype_events.leave_allocation.CustomLeaveAllocation"
+}
+
 # Scheduled Tasks
 # ---------------
 scheduler_events = {

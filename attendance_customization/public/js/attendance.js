@@ -7,6 +7,11 @@ frappe.ui.form.on("Attendance", {
       frm.set_df_property("late_incident_remark", "hidden", 0);
     }
 
+    // Allow Leave Without Pay (LWP/LOP) types to appear in the leave_type dropdown
+    frm.set_query("leave_type", function () {
+      return { filters: [] };
+    });
+
     // Show late strike info
     if (frm.doc.late_entry && frm.doc.late_strike_count > 0) {
       frm.dashboard.add_comment(
