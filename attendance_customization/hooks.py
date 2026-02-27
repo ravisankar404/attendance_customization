@@ -22,18 +22,22 @@ doctype_js = {
 # Document Events
 # ---------------
 # Hook on document methods and events
-# doc_events = {
-#     "Attendance": {
-#         "validate": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_validate",
-#         "on_submit": "attendance_customization.attendance_customization.attendance_immediate_processor.on_attendance_submit"
-#     }
-# }
+doc_events = {
+    "Leave Application": {
+        "after_insert": "attendance_customization.doctype_events.leave_application.after_insert",
+        "on_update":    "attendance_customization.doctype_events.leave_application.on_update",
+        "on_submit":    "attendance_customization.doctype_events.leave_application.on_submit",
+        "on_cancel":    "attendance_customization.doctype_events.leave_application.on_cancel",
+        "on_trash":     "attendance_customization.doctype_events.leave_application.on_trash",
+    }
+}
 
 # Override DocType Classes
 # ------------------------
 # Allow Leave Allocation for Leave Without Pay types (e.g. Loss of Pay)
 override_doctype_class = {
-    "Leave Allocation": "attendance_customization.doctype_events.leave_allocation.CustomLeaveAllocation"
+    "Leave Allocation": "attendance_customization.doctype_events.leave_allocation.CustomLeaveAllocation",
+    "Attendance Request": "attendance_customization.doctype_events.attendance_request.CustomAttendanceRequest",
 }
 
 # Scheduled Tasks
