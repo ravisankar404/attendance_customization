@@ -1,18 +1,7 @@
 import frappe
 
-def after_install():
-    """Run after app installation."""
-    print("Setting up Attendance Customization...")
 
-    add_attendance_request_reason_options()
-
-    # Clear cache
-    frappe.clear_cache()
-
-    print("Attendance Customization setup complete!")
-
-
-def add_attendance_request_reason_options():
+def execute():
     """Add 'Other' option to Attendance Request Reason field."""
     frappe.make_property_setter({
         "doctype": "Attendance Request",
@@ -21,3 +10,4 @@ def add_attendance_request_reason_options():
         "value": "Work From Home\nOn Duty\nOther",
         "property_type": "Text",
     })
+    frappe.clear_cache()

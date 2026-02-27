@@ -2,3 +2,4 @@ attendance_customization.patches.create_attendance_fields
 attendance_customization.patches.hide_strike_fields
 attendance_customization.patches.update_remark_field
 attendance_customization.patches.add_reset_count_field
+attendance_customization.patches.add_attendance_request_other_reason
