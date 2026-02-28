@@ -40,6 +40,18 @@ def on_update(doc, method):
     if doc.docstatus != 0:
         return
 
+    # Handle rejection: clean up the orphan draft AR that was created in after_insert.
+    # on_submit does NOT fire for rejected leaves (docstatus stays 0), so we must
+    # handle it here. A rejected leave should not have a pending AR.
+    if doc.status == "Rejected" and getattr(old_doc, "status", None) != "Rejected":
+        if _is_half_day(doc):
+            draft_name = _find_attendance_request(
+                doc.employee, doc.half_day_date, docstatus_filter=0
+            )
+            if draft_name:
+                _safe_delete_ar(draft_name, "leave rejected")
+        return  # No further AR management needed for rejected leaves.
+
     half_day_now = _is_half_day(doc)
     half_day_before = bool(old_doc.half_day and old_doc.half_day_date)
 
@@ -75,11 +87,11 @@ def on_update(doc, method):
 def on_submit(doc, method):
     """
     Fires when a Leave Application is submitted (docstatus 0→1).
-    In HRMS, only Approved (or Rejected) leaves can be submitted.
+    In Frappe HRMS only Approved leaves reach docstatus=1 (submitted).
+    Rejected leaves stay at docstatus=0 and are handled in on_update.
 
     For Approved half-day leaves: submits the draft Attendance Request
     created in after_insert, or creates + submits one if missing.
-    Rejected leaves are skipped entirely.
     """
     if not _is_half_day(doc):
         return
@@ -182,6 +194,22 @@ def _safe_delete_ar(ar_name, reason=""):
         )
 
 
+def _get_ar_half_day_session(leave_doc):
+    """
+    Return the half-day session value from the Leave Application if the
+    Attendance Request doctype has a matching custom_half_day_session field.
+    Returns None if the field does not exist on Attendance Request.
+    """
+    session = getattr(leave_doc, "custom_half_day_session", None)
+    if not session:
+        return None
+    # Only set if the Attendance Request doctype actually has this custom field.
+    ar_meta = frappe.get_meta("Attendance Request")
+    if ar_meta.get_field("custom_half_day_session"):
+        return session
+    return None
+
+
 def _create_draft_attendance_request(leave_doc):
     """
     Create a new DRAFT Attendance Request for the half-day date.
@@ -189,7 +217,9 @@ def _create_draft_attendance_request(leave_doc):
     Edge cases handled:
     1. Exact duplicate guard: skip if any non-cancelled AR already exists.
     2. Overlap guard: skip if another AR overlaps this date.
-    3. All exceptions are caught, logged, and surfaced as a soft warning.
+    3. custom_half_day_session is synced from the Leave Application if the
+       Attendance Request doctype exposes the same custom field.
+    4. All exceptions are caught, logged, and surfaced as a soft warning.
     """
     employee = leave_doc.employee
     half_day_date = leave_doc.half_day_date
@@ -238,6 +268,10 @@ def _create_draft_attendance_request(leave_doc):
         ar.explanation = _("Auto-created from Half Day Leave Application {0}").format(
             leave_doc.name
         )
+        # Sync session (Morning / Afternoon) if the AR doctype has the field.
+        session = _get_ar_half_day_session(leave_doc)
+        if session:
+            ar.custom_half_day_session = session
         ar.flags.ignore_permissions = True
         ar.insert()             # saved as DRAFT (docstatus=0)
 
@@ -360,6 +394,10 @@ def _create_and_submit_attendance_request(leave_doc):
         ar.explanation = _("Auto-created from Half Day Leave Application {0}").format(
             leave_doc.name
         )
+        # Sync session (Morning / Afternoon) if the AR doctype has the field.
+        session = _get_ar_half_day_session(leave_doc)
+        if session:
+            ar.custom_half_day_session = session
         ar.flags.ignore_permissions = True
         ar.insert()
         ar.submit()
