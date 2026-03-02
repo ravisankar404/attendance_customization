@@ -66,9 +66,16 @@ def on_update(doc, method):
                 _safe_delete_ar(old_draft, "date change")
             _create_draft_attendance_request(doc)
         else:
-            # Date unchanged — ensure AR exists (idempotent).
-            if not _find_attendance_request(doc.employee, doc.half_day_date):
+            # Date unchanged — ensure AR exists and session is in sync.
+            draft = _find_attendance_request(
+                doc.employee, doc.half_day_date, docstatus_filter=0
+            )
+            if not draft:
                 _create_draft_attendance_request(doc)
+            else:
+                # AR exists: sync custom_half_day_session in case it changed
+                # (e.g. employee switches Forenoon → Afternoon without changing date).
+                _sync_draft_ar_session(draft, doc)
 
     elif half_day_now and not half_day_before:
         # Switched from full-day to half-day — create draft AR.
@@ -100,6 +107,65 @@ def on_submit(doc, method):
         return
 
     _submit_attendance_request(doc)
+
+
+def on_update_after_submit(doc, method):
+    """
+    Fires when a submitted Leave Application's fields are updated while
+    docstatus stays at 1.
+
+    This is the critical hook for the ESS portal approval workflow:
+    - Employee submits leave from ESS → docstatus 0→1, status="Open"
+      → on_submit fires but status != "Approved" → AR is NOT submitted yet
+    - Manager approves from desk/ESS → status changes to "Approved"
+      → docstatus stays 1 → on_submit does NOT fire again
+      → THIS hook fires → we submit the draft AR here
+
+    Also handles rejection after submission (status → "Rejected"):
+    the draft AR is cleaned up so it does not remain as an orphan.
+    """
+    if not _is_half_day(doc):
+        return
+
+    if doc.status == "Approved":
+        # Guard: AR might already be submitted (e.g. on_submit handled it
+        # in a single-step auto-approve configuration).
+        already_submitted = _find_attendance_request(
+            doc.employee, doc.half_day_date, docstatus_filter=1
+        )
+        if already_submitted:
+            return
+
+        _submit_attendance_request(doc)
+
+    elif doc.status == "Rejected":
+        # Leave rejected after submission.
+        # Case A: leave was approved first (AR is submitted) → cancel the AR.
+        # Case B: leave was never approved (AR is still draft) → delete the draft.
+        submitted_ar = _find_attendance_request(
+            doc.employee, doc.half_day_date, docstatus_filter=1
+        )
+        if submitted_ar:
+            try:
+                frappe.get_doc("Attendance Request", submitted_ar).cancel()
+            except Exception:
+                frappe.log_error(
+                    message=frappe.get_traceback(),
+                    title="Failed to cancel Attendance Request {0} (leave rejected after approval)".format(
+                        submitted_ar
+                    ),
+                )
+                frappe.msgprint(
+                    _("Could not cancel Attendance Request {0}. "
+                      "Please cancel it manually.").format(frappe.bold(submitted_ar)),
+                    indicator="orange",
+                )
+
+        draft_name = _find_attendance_request(
+            doc.employee, doc.half_day_date, docstatus_filter=0
+        )
+        if draft_name:
+            _safe_delete_ar(draft_name, "leave rejected after submit")
 
 
 def on_cancel(doc, method):
@@ -192,6 +258,22 @@ def _safe_delete_ar(ar_name, reason=""):
                 ar_name, reason
             ),
         )
+
+
+def _sync_draft_ar_session(ar_name, leave_doc):
+    """
+    Keep custom_half_day_session on a draft AR in sync with the Leave Application.
+    Called when the employee changes the session (Forenoon ↔ Afternoon) on a draft
+    leave without changing the half_day_date — the date-change path already handles
+    full AR recreation, but a session-only change needs a targeted field update.
+    Does nothing if the AR doctype does not have the custom field.
+    """
+    session = _get_ar_half_day_session(leave_doc)
+    if session is None:
+        return
+    current = frappe.db.get_value("Attendance Request", ar_name, "custom_half_day_session")
+    if current != session:
+        frappe.db.set_value("Attendance Request", ar_name, "custom_half_day_session", session)
 
 
 def _get_ar_half_day_session(leave_doc):

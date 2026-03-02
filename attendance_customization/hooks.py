@@ -24,11 +24,14 @@ doctype_js = {
 # Hook on document methods and events
 doc_events = {
     "Leave Application": {
-        "after_insert": "attendance_customization.doctype_events.leave_application.after_insert",
-        "on_update":    "attendance_customization.doctype_events.leave_application.on_update",
-        "on_submit":    "attendance_customization.doctype_events.leave_application.on_submit",
-        "on_cancel":    "attendance_customization.doctype_events.leave_application.on_cancel",
-        "on_trash":     "attendance_customization.doctype_events.leave_application.on_trash",
+        "after_insert":           "attendance_customization.doctype_events.leave_application.after_insert",
+        "on_update":              "attendance_customization.doctype_events.leave_application.on_update",
+        "on_submit":              "attendance_customization.doctype_events.leave_application.on_submit",
+        # Fires when a *submitted* leave is updated — e.g. manager approves via
+        # ESS workflow (status "Open" → "Approved" while docstatus stays 1).
+        "on_update_after_submit": "attendance_customization.doctype_events.leave_application.on_update_after_submit",
+        "on_cancel":              "attendance_customization.doctype_events.leave_application.on_cancel",
+        "on_trash":               "attendance_customization.doctype_events.leave_application.on_trash",
     }
 }
 
