@@ -94,19 +94,22 @@ def on_update(doc, method):
 def on_submit(doc, method):
     """
     Fires when a Leave Application is submitted (docstatus 0→1).
-    In Frappe HRMS only Approved leaves reach docstatus=1 (submitted).
-    Rejected leaves stay at docstatus=0 and are handled in on_update.
-
-    For Approved half-day leaves: submits the draft Attendance Request
-    created in after_insert, or creates + submits one if missing.
+    For Approved half-day leaves: submits the draft Attendance Request.
+    For Rejected/other status: clean up any orphaned draft AR.
     """
     if not _is_half_day(doc):
         return
 
-    if doc.status != "Approved":
-        return
-
-    _submit_attendance_request(doc)
+    if doc.status == "Approved":
+        _submit_attendance_request(doc)
+    else:
+        # Leave submitted as Rejected (unusual but HRMS allows it).
+        # The draft AR created in after_insert is now an orphan — delete it.
+        draft_name = _find_attendance_request(
+            doc.employee, doc.half_day_date, docstatus_filter=0
+        )
+        if draft_name:
+            _safe_delete_ar(draft_name, "leave submitted as non-approved")
 
 
 def on_update_after_submit(doc, method):
