@@ -102,14 +102,16 @@ def on_submit(doc, method):
 
     if doc.status == "Approved":
         _submit_attendance_request(doc)
-    else:
-        # Leave submitted as Rejected (unusual but HRMS allows it).
+    elif doc.status == "Rejected":
+        # Leave submitted directly as Rejected (unusual but some HRMS builds allow it).
         # The draft AR created in after_insert is now an orphan — delete it.
+        # Note: status="Open" (normal ESS submit) does nothing here — the draft AR
+        # stays alive until manager approval triggers on_update_after_submit.
         draft_name = _find_attendance_request(
             doc.employee, doc.half_day_date, docstatus_filter=0
         )
         if draft_name:
-            _safe_delete_ar(draft_name, "leave submitted as non-approved")
+            _safe_delete_ar(draft_name, "leave submitted as Rejected")
 
 
 def on_update_after_submit(doc, method):
