@@ -55,6 +55,27 @@ class CustomAttendanceRequest(AttendanceRequest):
             return "Work From Home"
         return "Present"
 
+    def validate_no_attendance_to_create(self):
+        """
+        Cloud HRMS added this method to validate() — it throws if every day in
+        the request range shows as "Skip" in get_attendance_warnings(). For
+        half-day ARs auto-created from a half-day leave, the approved leave is
+        EXPECTED to be there, so has_leave_record() always returns True for the
+        date and all warnings get action="Skip". This would incorrectly block
+        submission. We bypass the check for half-day requests; our overrides of
+        should_mark_attendance() and create_or_update_attendance() already handle
+        the half-day leave scenario correctly. For non-half-day requests we call
+        the parent if it exists (older HRMS versions don't have this method).
+        """
+        if self.half_day and self.half_day_date:
+            # Half-day AR: the leave exists by design — skip this validation.
+            return
+
+        # Non-half-day AR: delegate to parent if present (cloud HRMS only).
+        parent_validate = getattr(super(), "validate_no_attendance_to_create", None)
+        if parent_validate:
+            parent_validate()
+
     def should_mark_attendance(self, attendance_date: str) -> bool:
         """
         For the specific half-day date, skip the leave-record check.
@@ -75,13 +96,6 @@ class CustomAttendanceRequest(AttendanceRequest):
         # attendance is correctly set to "Half Day".
         # Guard against half_day_date being None (corrupted data / bypass scenario).
         if self.half_day and self.half_day_date and getdate(self.half_day_date) == getdate(attendance_date):
-            frappe.log_error(
-                message=(
-                    "should_mark_attendance BYPASS (returning True) | ar={0} "
-                    "| half_day={1} | half_day_date={2} | attendance_date={3}"
-                ).format(self.name, self.half_day, self.half_day_date, attendance_date),
-                title="[DEBUG] AR should_mark_attendance",
-            )
             return True
 
         # For non-half-day dates: use standard logic (includes leave check)
