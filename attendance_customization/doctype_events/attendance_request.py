@@ -75,6 +75,13 @@ class CustomAttendanceRequest(AttendanceRequest):
         # attendance is correctly set to "Half Day".
         # Guard against half_day_date being None (corrupted data / bypass scenario).
         if self.half_day and self.half_day_date and getdate(self.half_day_date) == getdate(attendance_date):
+            frappe.log_error(
+                message=(
+                    "should_mark_attendance BYPASS (returning True) | ar={0} "
+                    "| half_day={1} | half_day_date={2} | attendance_date={3}"
+                ).format(self.name, self.half_day, self.half_day_date, attendance_date),
+                title="[DEBUG] AR should_mark_attendance",
+            )
             return True
 
         # For non-half-day dates: use standard logic (includes leave check)

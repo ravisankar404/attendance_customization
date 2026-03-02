@@ -100,6 +100,14 @@ def on_submit(doc, method):
     For Approved half-day leaves: submits the draft Attendance Request
     created in after_insert, or creates + submits one if missing.
     """
+    frappe.log_error(
+        message=(
+            "on_submit fired | employee={0} | status={1} | docstatus={2} "
+            "| half_day={3} | half_day_date={4}"
+        ).format(doc.employee, doc.status, doc.docstatus, doc.half_day, doc.half_day_date),
+        title="[DEBUG] Leave on_submit",
+    )
+
     if not _is_half_day(doc):
         return
 
@@ -124,6 +132,14 @@ def on_update_after_submit(doc, method):
     Also handles rejection after submission (status → "Rejected"):
     the draft AR is cleaned up so it does not remain as an orphan.
     """
+    frappe.log_error(
+        message=(
+            "on_update_after_submit fired | employee={0} | status={1} | docstatus={2} "
+            "| half_day={3} | half_day_date={4}"
+        ).format(doc.employee, doc.status, doc.docstatus, doc.half_day, doc.half_day_date),
+        title="[DEBUG] Leave on_update_after_submit",
+    )
+
     if not _is_half_day(doc):
         return
 
@@ -400,6 +416,13 @@ def _submit_attendance_request(leave_doc):
     half_day_date = leave_doc.half_day_date
 
     draft_ar_name = _find_attendance_request(employee, half_day_date, docstatus_filter=0)
+
+    frappe.log_error(
+        message=(
+            "_submit_attendance_request | employee={0} | half_day_date={1} | draft_ar={2}"
+        ).format(employee, half_day_date, draft_ar_name),
+        title="[DEBUG] _submit_attendance_request",
+    )
 
     if draft_ar_name:
         # Happy path: submit the existing draft.
