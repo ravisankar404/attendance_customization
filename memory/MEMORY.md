@@ -36,6 +36,15 @@ because users never went through the approve+submit flow.
 ## Attendance Request reason field options
 `Work From Home`, `On Duty`, `Other` (Other added by patch: add_attendance_request_other_reason)
 
+## Bulk Delete Attendance Page
+- Path: `attendance_customization/attendance_customization/page/bulk_delete_attendance/`
+- URL: `/bulk-delete-attendance`
+- Roles: System Manager, HR Manager
+- Backend: `bulk_delete_attendance.py` — `get_attendance_count()` + `bulk_delete_attendance()`
+- Auto-queues as background job when > 500 records; uses `frappe.publish_realtime` for completion notification
+- Validates: from > to, range > 366 days, permissions with `frappe.only_for`
+- Batch size: 100 records per commit loop (avoids lock timeouts)
+
 ## Important ERPNext/HRMS Behaviours
 - Leave Application can only be submitted when status = "Approved" or "Rejected"
 - Leave Application.update_attendance() creates Attendance records (status=Half Day or On Leave)
