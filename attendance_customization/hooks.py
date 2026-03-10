@@ -6,6 +6,7 @@ app_publisher = "ravi"
 app_description = "Custom fields and logic for Attendance tracking"
 app_email = "ravi@campx.in"
 app_license = "MIT"
+required_apps = ["frappe >=15.0.0", "erpnext >=15.0.0", "hrms >=15.0.0"]
 
 # Installation
 # ------------
