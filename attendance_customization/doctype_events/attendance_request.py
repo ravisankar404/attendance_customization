@@ -147,5 +147,6 @@ class CustomAttendanceRequest(AttendanceRequest):
             doc.company = self.company
             doc.attendance_request = self.name
             doc.status = status
-            doc.insert(ignore_permissions=True)
+            doc.flags.ignore_permissions = True
+            doc.insert()
             doc.submit()
