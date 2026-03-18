@@ -24,6 +24,12 @@ doctype_js = {
 # ---------------
 # Hook on document methods and events
 doc_events = {
+    "Employee Checkin": {
+        # When a checkin arrives for a date that already has a Half Day attendance
+        # (pre-created from a future leave approval), update in_time/out_time on that
+        # attendance so the employee's actual work time is not lost.
+        "after_insert": "attendance_customization.doctype_events.employee_checkin.after_insert",
+    },
     "Leave Application": {
         "after_insert":           "attendance_customization.doctype_events.leave_application.after_insert",
         "on_update":              "attendance_customization.doctype_events.leave_application.on_update",
