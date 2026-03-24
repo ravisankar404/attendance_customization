@@ -132,6 +132,10 @@ def _link_checkins(leave_doc):
 
         frappe.db.set_value("Employee Checkin", checkin.name, "attendance", attendance.name)
 
+    # Employee has checkins → they worked the other half.
+    # Set half_day_status="Present" so Monthly Sheet shows HD/P instead of HD/A.
+    frappe.db.set_value("Attendance", attendance.name, "half_day_status", "Present")
+
     frappe.logger().info(
         "Half Day attendance {}: linked {} checkin(s) after leave approval".format(
             attendance.name, len(checkins)

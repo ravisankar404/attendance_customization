@@ -84,7 +84,7 @@ def check_half_day_no_show(date=None):
     try:
         frappe.db.sql("""
             UPDATE `tabAttendance`
-            SET leave_application = NULL, modified = NOW()
+            SET leave_application = NULL, half_day_status = 'Absent', modified = NOW()
             WHERE name IN %(names)s
         """, {"names": no_show_att_names})
 

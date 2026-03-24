@@ -42,13 +42,19 @@ def _ensure_half_day_attendance(doc):
     Sheet shows the right status regardless of how attendance was created.
 
     CASES HANDLED:
-      "Present"   + approved half-day leave → "Half Day" + leave_application  (HD/L) ✓
-      "Half Day"  + no leave_application    → "Half Day" + leave_application  (HD/L) ✓
-      "Absent"    + approved half-day leave → "Half Day" + no leave_application (HD/A) ✓
+      "Present"   + approved half-day leave → "Half Day" + leave_application + half_day_status="Present" (HD/P) ✓
+      "Half Day"  + half_day_status=Absent  → "Half Day" + leave_application + half_day_status="Present" (HD/P) ✓
+        └── HRMS auto attendance sets half_day_status="Absent" when hours < threshold even
+            though the employee worked the full expected half. We correct it here.
+      "Absent"    + approved half-day leave → "Half Day" + no leave_application + half_day_status="Absent" (HD/A) ✓
         └── 0.5 leave consumed by Leave Application + 0.5 salary deduction = L/A ✓
 
+    HRMS v15 Monthly Attendance Sheet uses half_day_status (not leave_application) to display:
+      half_day_status="Present" → HD/P  (employee worked the other half — correct for leave + came in)
+      half_day_status="Absent"  → HD/A  (employee missed the working half — correct for L/A case)
+
     SKIPPED:
-      - Already correct (Half Day + leave_application set): fast exit.
+      - Already fully correct (Half Day + leave_application + half_day_status=Present): fast exit.
       - On Leave / Work From Home: intentional status, never override.
       - Penalty records (custom_late_penalty_applied=1): penalty processor
         cancels and recreates attendance — don't interfere with it.
@@ -59,8 +65,10 @@ def _ensure_half_day_attendance(doc):
       so this function skips penalty records. When penalties are cleared,
       the restored "Present" record is correctly changed to Half Day + leave. ✓
     """
-    # Already correct — skip DB query entirely.
-    if doc.status == "Half Day" and doc.leave_application:
+    # Already fully correct — skip DB query entirely.
+    if (doc.status == "Half Day"
+            and doc.leave_application
+            and doc.get("half_day_status") == "Present"):
         return
 
     # Don't override statuses that are intentionally set.
@@ -96,10 +104,14 @@ def _ensure_half_day_attendance(doc):
     doc.leave_type = leave.leave_type
 
     if original_status != "Absent":
-        # Present or Half Day (no leave_application) → link leave → HD/L.
+        # Employee came in (was Present, or Half Day but HRMS under-counted hours).
+        # Link leave and mark other half as Present → Monthly Sheet shows HD/P.
         doc.leave_application = leave.name
-    # Absent → Half Day without leave_application → HD/A.
-    # Leave Application stays approved → 0.5 leave consumed separately.
+        doc.half_day_status = "Present"
+    else:
+        # Employee missed the working half → L/A case.
+        # Don't link leave_application → Monthly Sheet shows HD/A.
+        doc.half_day_status = "Absent"
 
 
 # ─────────────────────────────────────────────

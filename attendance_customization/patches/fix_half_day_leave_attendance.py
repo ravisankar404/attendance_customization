@@ -102,10 +102,11 @@ def execute():
                 skipped += 1
                 continue
 
-            # Had checkins but leave_application not linked → set it (HD/A → HD/L).
+            # Had checkins but leave_application not linked → set it + mark other half Present.
             if has_checkins and not attendance.leave_application:
                 frappe.db.set_value(
-                    "Attendance", attendance.name, "leave_application", la.name
+                    "Attendance", attendance.name,
+                    {"leave_application": la.name, "half_day_status": "Present"}
                 )
                 updated += 1
                 continue
@@ -148,21 +149,22 @@ def execute():
         company = la.company or frappe.db.get_value("Employee", employee, "company")
         employee_name = frappe.db.get_value("Employee", employee, "employee_name") or ""
         leave_application_link = la.name if has_checkins else ""
+        half_day_status = "Present" if has_checkins else "Absent"
 
         try:
             att_name = frappe.generate_hash(length=10)
             frappe.db.sql("""
                 INSERT INTO `tabAttendance`
                     (name, employee, employee_name, attendance_date, status,
-                     leave_type, leave_application, company,
+                     leave_type, leave_application, half_day_status, company,
                      docstatus, creation, modified, modified_by, owner)
                 VALUES
                     (%s, %s, %s, %s, 'Half Day',
-                     %s, %s, %s,
+                     %s, %s, %s, %s,
                      1, %s, %s, 'Administrator', 'Administrator')
             """, (
                 att_name, employee, employee_name, half_day_date,
-                la.leave_type, leave_application_link, company,
+                la.leave_type, leave_application_link, half_day_status, company,
                 now(), now(),
             ))
             created += 1
