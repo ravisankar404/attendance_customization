@@ -46,7 +46,7 @@ def check_half_day_no_show(date=None):
     """
     yesterday = getdate(date) if date else getdate(add_days(nowdate(), -1))
 
-    # All submitted Half Day attendances with a linked leave application for yesterday.
+    # Query 1: all submitted Half Day attendances with leave linked for yesterday.
     attendances = frappe.get_all(
         "Attendance",
         filters=[
@@ -61,55 +61,41 @@ def check_half_day_no_show(date=None):
     if not attendances:
         return
 
-    marked_hda = []
-    errors = []
+    employees_on_leave = {a.employee: a.name for a in attendances}
 
-    for record in attendances:
-        # Check for ANY checkin on that date.
-        # If even one checkin exists, the employee came for their working half.
-        checkins = frappe.get_all(
-            "Employee Checkin",
-            filters=[
-                ["employee", "=", record.employee],
-                ["time", "between", [
-                    "{} 00:00:00".format(yesterday),
-                    "{} 23:59:59".format(yesterday),
-                ]],
-            ],
-            fields=["name"],
-            limit=1,
-        )
+    # Query 2: single query for ALL checkins yesterday for all these employees.
+    # No N+1 — one query regardless of how many employees.
+    employees_with_checkins = set(frappe.db.sql_list("""
+        SELECT DISTINCT employee
+        FROM `tabEmployee Checkin`
+        WHERE employee IN %(employees)s
+        AND DATE(time) = %(date)s
+    """, {"employees": list(employees_on_leave.keys()), "date": yesterday}))
 
-        if checkins:
-            # Employee checked in → working half was attended → keep HD/L.
-            continue
+    # Employees with no checkins = absent for working half → change to HD/A.
+    no_show_employees = set(employees_on_leave.keys()) - employees_with_checkins
 
-        # No checkins → employee missed the working half.
-        # Remove the leave_application link so attendance shows HD/A.
-        # The Leave Application stays approved — 0.5 leave balance was already
-        # consumed at approval time and is not affected by this change.
-        try:
-            frappe.db.set_value("Attendance", record.name, "leave_application", None)
-            marked_hda.append(record.employee)
-        except Exception:
-            frappe.log_error(
-                message=frappe.get_traceback(),
-                title="half_day_absent_checker: failed to update attendance {} "
-                      "for employee {}".format(record.name, record.employee),
-            )
-            errors.append(record.employee)
+    if not no_show_employees:
+        return
 
-    if marked_hda:
+    no_show_att_names = [employees_on_leave[e] for e in no_show_employees]
+
+    # Single bulk UPDATE instead of one set_value per record.
+    try:
+        frappe.db.sql("""
+            UPDATE `tabAttendance`
+            SET leave_application = NULL, modified = NOW()
+            WHERE name IN %(names)s
+        """, {"names": no_show_att_names})
+
         frappe.logger().info(
             "half_day_absent_checker [{}]: {} employee(s) changed to HD/A "
             "(no checkins for working half): {}".format(
-                yesterday, len(marked_hda), ", ".join(marked_hda)
+                yesterday, len(no_show_employees), ", ".join(no_show_employees)
             )
         )
-
-    if errors:
-        frappe.logger().error(
-            "half_day_absent_checker [{}]: {} employee(s) failed to update: {}".format(
-                yesterday, len(errors), ", ".join(errors)
-            )
+    except Exception:
+        frappe.log_error(
+            message=frappe.get_traceback(),
+            title="half_day_absent_checker [{}]: bulk update failed".format(yesterday),
         )
