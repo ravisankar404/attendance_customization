@@ -9,7 +9,6 @@ app_license = "MIT"
 required_apps = ["frappe", "erpnext", "hrms"]
 
 # Installation
-# ------------
 after_install = "attendance_customization.setup.install.after_install"
 
 # Single DocTypes (Settings pages)
@@ -21,54 +20,49 @@ doctype_js = {
 }
 
 # Document Events
-# ---------------
-# Hook on document methods and events
 doc_events = {
+    "Attendance": {
+        # validate: auto-correct attendance status on half-day leave dates so
+        # ProcessAttendance (delete+remark workflows) always produces HD/L or
+        # HD/A correctly — no scheduler required for this to work.
+        # Also updates late strike count in real-time on save.
+        "validate":  "attendance_customization.doctype_events.attendance.validate",
+        "on_submit": "attendance_customization.doctype_events.attendance.on_submit",
+    },
     "Employee Checkin": {
-        # When a checkin arrives for a date that already has a Half Day attendance
-        # (pre-created from a future leave approval), update in_time/out_time on that
-        # attendance so the employee's actual work time is not lost.
+        # When a checkin arrives for a date that already has a submitted Half Day
+        # attendance, write in_time/out_time and link the checkin so
+        # mark_attendance does not overwrite the Half Day status.
         "after_insert": "attendance_customization.doctype_events.employee_checkin.after_insert",
     },
     "Leave Application": {
-        "after_insert":           "attendance_customization.doctype_events.leave_application.after_insert",
-        "on_update":              "attendance_customization.doctype_events.leave_application.on_update",
+        # On approval: link any checkins that arrived before the attendance was
+        # created (they were skipped by employee_checkin.after_insert).
+        # On rejection/cancellation: unlink checkins so mark_attendance can
+        # reprocess them and produce a correct Present/Absent record.
         "on_submit":              "attendance_customization.doctype_events.leave_application.on_submit",
-        # Fires when a *submitted* leave is updated — e.g. manager approves via
-        # ESS workflow (status "Open" → "Approved" while docstatus stays 1).
         "on_update_after_submit": "attendance_customization.doctype_events.leave_application.on_update_after_submit",
         "on_cancel":              "attendance_customization.doctype_events.leave_application.on_cancel",
-        "on_trash":               "attendance_customization.doctype_events.leave_application.on_trash",
-    }
+    },
 }
 
 # Override DocType Classes
-# ------------------------
-# Allow Leave Allocation for Leave Without Pay types (e.g. Loss of Pay)
 override_doctype_class = {
     "Leave Allocation": "attendance_customization.doctype_events.leave_allocation.CustomLeaveAllocation",
-    "Attendance Request": "attendance_customization.doctype_events.attendance_request.CustomAttendanceRequest",
 }
 
 # Scheduled Tasks
-# ---------------
 scheduler_events = {
-    "daily": [
-        "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
-    ],
     "cron": {
-        # Run at 2 AM daily
+        # 2 AM: process late strikes for the previous day
         "0 2 * * *": [
             "attendance_customization.attendance_customization.tasks.late_strike_processor.daily_late_strike_processor"
-        ]
+        ],
+        # 6 AM: detect half-day leave employees who also missed their working half
+        # (no checkins) → changes attendance from HD/L to HD/A so payroll
+        # deducts 0.5 day salary for the absent working half.
+        "0 6 * * *": [
+            "attendance_customization.attendance_customization.tasks.half_day_absent_checker.check_half_day_no_show"
+        ],
     }
 }
-
-# REMOVED CONFLICTING CONFIGURATIONS:
-# 1. Removed 'after_migrate' - because after_install already creates custom fields
-# 2. Removed 'fixtures' - because we're creating fields programmatically, not through fixtures
-
-# Note: Choose ONE approach for custom fields:
-# Option A: Create programmatically (current approach via after_install)
-# Option B: Use fixtures (export/import approach)
-# Don't use both!

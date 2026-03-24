@@ -1,5 +1,4 @@
 import frappe
-from frappe import _
 from frappe.utils import getdate
 
 
@@ -7,29 +6,35 @@ def after_insert(doc, method):
     """
     Fires every time an Employee Checkin record is inserted.
 
-    Problem this solves
-    -------------------
-    When a half-day leave is approved for a FUTURE date, Frappe's standard
-    Leave Application.update_attendance() (and our AR submission) pre-creates
-    an Attendance record with status="Half Day" and no in_time/out_time.
+    When a half-day leave is approved, HRMS creates a submitted Attendance
+    record with status="Half Day" and leave_application set. The Monthly
+    Attendance Sheet reads leave_application to show HD/L (not HD/A), and
+    payroll counts it as leave — not as an absent half-day.
 
-    When the actual day arrives and the employee punches in/out, the
-    mark_attendance scheduled job sees the existing Attendance record and
-    SKIPS that date entirely — so in_time/out_time are never recorded.
+    However, mark_attendance (ProcessAttendance) re-runs daily and skips
+    any date that already has a submitted attendance. The problem: it checks
+    whether a checkin is linked to an attendance to decide if it needs
+    processing. An unlinked checkin on a Half Day date could cause
+    mark_attendance to overwrite the status with Present/Absent.
 
-    Fix
-    ---
-    As soon as a Checkin arrives for a date that already has a submitted
-    Half Day attendance, we immediately write the time onto the attendance
-    record directly, bypassing the skip logic in mark_attendance.
+    Fix: as soon as a checkin arrives for a date that already has a submitted
+    Half Day attendance, write in_time/out_time and link the checkin.
+
+    For checkins that arrive BEFORE leave approval (no attendance exists yet),
+    leave_application.on_update_after_submit handles the retroactive link.
+
+    Edge cases:
+    - doc.time is None: return early.
+    - No Half Day attendance for the date: return early (normal working day).
+    - log_type is IN but in_time already set: skip time update, still link.
+    - log_type is OUT but out_time already set: skip time update, still link.
+    - log_type missing: link only (prevents reprocessing without setting times).
     """
     if not doc.time:
         return
 
     checkin_date = getdate(doc.time)
 
-    # Find a submitted Half Day attendance for this employee on this date.
-    # Only target Half Day — Present/Absent already go through normal processing.
     attendance = frappe.db.get_value(
         "Attendance",
         {
@@ -43,38 +48,24 @@ def after_insert(doc, method):
     )
 
     if not attendance:
-        # No pre-existing Half Day attendance — let mark_attendance handle it normally.
-        return
-
-    if not doc.log_type:
-        # Can't determine IN vs OUT — skip to avoid writing wrong field.
         return
 
     update = {}
 
     if doc.log_type == "IN" and not attendance.in_time:
         update["in_time"] = doc.time
-
     elif doc.log_type == "OUT" and not attendance.out_time:
         update["out_time"] = doc.time
 
-    if not update:
-        # Field already populated (duplicate checkin) — nothing to do.
-        return
+    if update:
+        frappe.db.set_value("Attendance", attendance.name, update)
 
-    frappe.db.set_value("Attendance", attendance.name, update)
-
-    # Also link the checkin to the attendance record so ProcessAttendance
-    # knows this checkin is already handled and does not reprocess it.
-    # Without this, ProcessAttendance sees an "unlinked" checkin and may
-    # try to create/update attendance again — potentially overwriting our
-    # Half Day status with "Present".
     frappe.db.set_value("Employee Checkin", doc.name, "attendance", attendance.name)
 
     frappe.logger().info(
-        "Half Day attendance {0}: updated {1} from Employee Checkin {2}".format(
+        "Half Day attendance {}: updated {} from Employee Checkin {}".format(
             attendance.name,
-            list(update.keys()),
+            list(update.keys()) if update else ["linked only"],
             doc.name,
         )
     )
