@@ -19,17 +19,52 @@ def validate(doc, method):
     """
     Fires on every attendance save/insert (draft only).
 
-    1. Auto-correct attendance status for half-day leave dates.
-       ProcessAttendance creates "Present" from checkins without checking Leave
-       Applications. This corrects it to the right status automatically —
-       no scheduler needed, works even after delete-and-remark workflows.
-
-    2. Late strike count update (real-time, before submit).
+    Order matters:
+    1. _enforce_checkin_pair_rule  — demote Present→Absent if only one checkin exists.
+    2. _ensure_half_day_attendance — promote to Half Day if an approved half-day leave
+                                      exists, then HD/P vs HD/A based on pair presence.
+    3. Late strike count update.
     """
+    _enforce_checkin_pair_rule(doc)
     _ensure_half_day_attendance(doc)
 
     if doc.status == "Present" and doc.late_entry == 1:
         update_late_strike_count(doc)
+
+
+# ─────────────────────────────────────────────
+# Checkin pair enforcement
+# ─────────────────────────────────────────────
+
+def _enforce_checkin_pair_rule(doc):
+    """
+    Valid attendance from the biometric system requires a matched IN + OUT pair.
+    If only one punch exists the employee either forgot to check out, or the
+    device missed one swipe — either way salary should NOT be paid for that half.
+
+    RULE:
+      - in_time set  AND  out_time set  → valid pair → no change.
+      - in_time set  XOR  out_time set  → incomplete → force Absent.
+      - neither set                     → manual/leave-created attendance → skip.
+
+    SKIPPED:
+      - Half Day: handled downstream by _ensure_half_day_attendance which reads
+        in_time/out_time directly and decides HD/P vs HD/A.
+      - On Leave / Work From Home: intentional statuses set by HR — never override.
+      - Penalty records (custom_late_penalty_applied=1): managed by
+        late_strike_processor — don't interfere.
+      - No checkin data at all (both times blank): manual attendance → accept as-is.
+    """
+    if doc.status in ("On Leave", "Work From Home", "Half Day"):
+        return
+    if doc.get("custom_late_penalty_applied"):
+        return
+    # No biometric data — manual or leave-created record, nothing to enforce.
+    if not doc.in_time and not doc.out_time:
+        return
+    # Incomplete pair → Absent.
+    if not (doc.in_time and doc.out_time):
+        doc.status = "Absent"
 
 
 # ─────────────────────────────────────────────
@@ -41,45 +76,60 @@ def _ensure_half_day_attendance(doc):
     Auto-correct attendance on half-day leave dates so the Monthly Attendance
     Sheet shows the right status regardless of how attendance was created.
 
-    CASES HANDLED:
-      "Present"   + approved half-day leave → "Half Day" + leave_application + half_day_status="Present" (HD/P) ✓
-      "Half Day"  + half_day_status=Absent  → "Half Day" + leave_application + half_day_status="Present" (HD/P) ✓
-        └── HRMS auto attendance sets half_day_status="Absent" when hours < threshold even
-            though the employee worked the full expected half. We correct it here.
-      "Absent"    + approved half-day leave → "Half Day" + no leave_application + half_day_status="Absent" (HD/A) ✓
-        └── 0.5 leave consumed by Leave Application + 0.5 salary deduction = L/A ✓
+    CASES HANDLED (evaluated AFTER _enforce_checkin_pair_rule runs):
 
-    HRMS v15 Monthly Attendance Sheet uses half_day_status (not leave_application) to display:
-      half_day_status="Present" → HD/P  (employee worked the other half — correct for leave + came in)
-      half_day_status="Absent"  → HD/A  (employee missed the working half — correct for L/A case)
+      in_time + out_time both set + approved half-day leave
+          → "Half Day" + leave_application + half_day_status="Present"   (HD/P) ✓
+          Employee worked the other half → full pay, 0.5 leave consumed.
+
+      Only one of in_time/out_time set + approved half-day leave
+          → "Half Day" + no leave_application + half_day_status="Absent" (HD/A) ✓
+          _enforce_checkin_pair_rule already set status="Absent"; we preserve that
+          intent. 0.5 leave consumed + 0.5 salary deduction = L/A.
+
+      No checkin times at all + approved half-day leave
+          → "Half Day" + leave_application + half_day_status="Present"   (HD/P, optimistic)
+          Attendance was created from leave approval before checkins arrived.
+          The 6 AM checker will flip to HD/A the next morning if no valid
+          IN+OUT pair arrives by then.
+
+    HRMS v15 Monthly Attendance Sheet reads half_day_status (NOT leave_application):
+      half_day_status="Present" → HD/P  (other half worked)
+      half_day_status="Absent"  → HD/A  (other half missed)
 
     SKIPPED:
-      - Already fully correct (Half Day + leave_application + half_day_status=Present): fast exit.
-      - On Leave / Work From Home: intentional status, never override.
-      - Penalty records (custom_late_penalty_applied=1): penalty processor
-        cancels and recreates attendance — don't interfere with it.
+      - Already fully correct (Half Day + leave_application + half_day_status=Present
+        + both times set): fast exit avoids a DB query.
+      - On Leave / Work From Home: intentional statuses, never override.
+      - Penalty records: managed by late_strike_processor.
       - Missing employee or attendance_date: guard against bad data.
-
-    SAFE WITH late_strike_processor.py:
-      The penalty processor sets custom_late_penalty_applied=1 before insert,
-      so this function skips penalty records. When penalties are cleared,
-      the restored "Present" record is correctly changed to Half Day + leave. ✓
     """
-    # Already fully correct — skip DB query entirely.
+    # Fast exit: already correct — skip DB query.
+    #
+    # Two safe states that need no re-evaluation:
+    #   1. Half Day + leave linked + HD/P + BOTH times set
+    #      → pair confirmed, nothing to change.
+    #   2. Half Day + leave linked + HD/P + NO times set
+    #      → leave-created attendance, checkins not linked yet.
+    #        6 AM checker owns the no-checkin correction — don't interfere here.
+    #
+    # The only case that falls through: one time set but not the other
+    # (e.g. in_time set by _link_checkins but out_time still missing).
+    # That needs re-evaluation so we can flip to HD/A.
     if (doc.status == "Half Day"
             and doc.leave_application
             and doc.get("half_day_status") == "Present"):
-        return
+        has_both = bool(doc.in_time and doc.out_time)
+        has_neither = not doc.in_time and not doc.out_time
+        if has_both or has_neither:
+            return
 
-    # Don't override statuses that are intentionally set.
     if doc.status in ("On Leave", "Work From Home"):
         return
 
-    # Penalty records are managed by late_strike_processor — don't touch them.
     if doc.get("custom_late_penalty_applied"):
         return
 
-    # Guard against incomplete data.
     if not doc.employee or not doc.attendance_date:
         return
 
@@ -99,19 +149,26 @@ def _ensure_half_day_attendance(doc):
     if not leave:
         return
 
-    original_status = doc.status
+    # Upgrade to Half Day regardless of what HRMS computed.
     doc.status = "Half Day"
     doc.leave_type = leave.leave_type
 
-    if original_status != "Absent":
-        # Employee came in (was Present, or Half Day but HRMS under-counted hours).
-        # Link leave and mark other half as Present → Monthly Sheet shows HD/P.
+    if doc.in_time and doc.out_time:
+        # Valid IN+OUT pair → employee worked the other half → HD/P.
         doc.leave_application = leave.name
         doc.half_day_status = "Present"
-    else:
-        # Employee missed the working half → L/A case.
-        # Don't link leave_application → Monthly Sheet shows HD/A.
+    elif doc.in_time or doc.out_time:
+        # Incomplete pair (only one punch) → employee didn't complete the working half.
+        # Clear leave_application so payroll and 6 AM checker don't count this as
+        # leave-covered. half_day_status="Absent" → Monthly Sheet shows HD/A (L/A).
+        doc.leave_application = None
         doc.half_day_status = "Absent"
+    else:
+        # No checkin data yet — attendance was created from leave approval before
+        # checkins were linked. Default to HD/P; 6 AM checker corrects if no
+        # valid pair arrives by next morning.
+        doc.leave_application = leave.name
+        doc.half_day_status = "Present"
 
 
 # ─────────────────────────────────────────────

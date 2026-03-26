@@ -132,13 +132,22 @@ def _link_checkins(leave_doc):
 
         frappe.db.set_value("Employee Checkin", checkin.name, "attendance", attendance.name)
 
-    # Employee has checkins → they worked the other half.
-    # Set half_day_status="Present" so Monthly Sheet shows HD/P instead of HD/A.
-    frappe.db.set_value("Attendance", attendance.name, "half_day_status", "Present")
+    # Set half_day_status based on pair completeness.
+    # Untyped checkins (no log_type) count as valid — legacy device support.
+    has_untyped = any(not c.log_type for c in checkins)
+    if (in_time and out_time) or has_untyped:
+        frappe.db.set_value("Attendance", attendance.name, "half_day_status", "Present")
+    else:
+        # Only one typed punch → incomplete → HD/A.
+        # employee_checkin.after_insert will flip to HD/P when the second punch arrives.
+        frappe.db.set_value("Attendance", attendance.name, "half_day_status", "Absent")
 
     frappe.logger().info(
-        "Half Day attendance {}: linked {} checkin(s) after leave approval".format(
-            attendance.name, len(checkins)
+        "Half Day attendance {}: linked {} checkin(s) after leave approval, "
+        "half_day_status={}".format(
+            attendance.name,
+            len(checkins),
+            "Present" if (in_time and out_time) else "Absent",
         )
     )
 
