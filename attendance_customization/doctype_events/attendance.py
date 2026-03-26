@@ -88,10 +88,10 @@ def _ensure_half_day_attendance(doc):
           intent. 0.5 leave consumed + 0.5 salary deduction = L/A.
 
       No checkin times at all + approved half-day leave
-          → "Half Day" + leave_application + half_day_status="Present"   (HD/P, optimistic)
+          → "Half Day" + leave_application + half_day_status="Absent"    (HD/A, immediate)
           Attendance was created from leave approval before checkins arrived.
-          The 6 AM checker will flip to HD/A the next morning if no valid
-          IN+OUT pair arrives by then.
+          employee_checkin.after_insert will flip to HD/P the moment a valid
+          IN+OUT pair arrives. If no pair ever arrives, stays HD/A correctly.
 
     HRMS v15 Monthly Attendance Sheet reads half_day_status (NOT leave_application):
       half_day_status="Present" → HD/P  (other half worked)
@@ -104,25 +104,24 @@ def _ensure_half_day_attendance(doc):
       - Penalty records: managed by late_strike_processor.
       - Missing employee or attendance_date: guard against bad data.
     """
-    # Fast exit: already correct — skip DB query.
+    # Fast exit: already in the correct state — skip DB query.
     #
-    # Two safe states that need no re-evaluation:
-    #   1. Half Day + leave linked + HD/P + BOTH times set
-    #      → pair confirmed, nothing to change.
-    #   2. Half Day + leave linked + HD/P + NO times set
-    #      → leave-created attendance, checkins not linked yet.
-    #        6 AM checker owns the no-checkin correction — don't interfere here.
+    # Correct states:
+    #   HD/A + no times  → leave created attendance, waiting for checkins.
+    #                       after_insert flips to HD/P when pair arrives. ✓
+    #   HD/P + both times → pair confirmed, employee worked the other half. ✓
     #
-    # The only case that falls through: one time set but not the other
-    # (e.g. in_time set by _link_checkins but out_time still missing).
-    # That needs re-evaluation so we can flip to HD/A.
-    if (doc.status == "Half Day"
-            and doc.leave_application
-            and doc.get("half_day_status") == "Present"):
-        has_both = bool(doc.in_time and doc.out_time)
-        has_neither = not doc.in_time and not doc.out_time
-        if has_both or has_neither:
-            return
+    # Everything else falls through for re-evaluation:
+    #   HD/P + no times   → HRMS optimistically set Present; correct to HD/A.
+    #   HD/P + one time   → pair incomplete; correct to HD/A.
+    #   HD/A + both times → pair exists but status wrong; correct to HD/P.
+    #   HD/A + one time   → already correct but fall through to confirm.
+    if (doc.status == "Half Day" and doc.leave_application):
+        hd_status = doc.get("half_day_status")
+        if hd_status == "Absent" and not doc.in_time and not doc.out_time:
+            return  # no checkins yet, HD/A is correct — after_insert handles upgrade
+        if hd_status == "Present" and doc.in_time and doc.out_time:
+            return  # valid pair confirmed, HD/P is correct
 
     if doc.status in ("On Leave", "Work From Home"):
         return
@@ -164,11 +163,11 @@ def _ensure_half_day_attendance(doc):
         doc.leave_application = None
         doc.half_day_status = "Absent"
     else:
-        # No checkin data yet — attendance was created from leave approval before
-        # checkins were linked. Default to HD/P; 6 AM checker corrects if no
-        # valid pair arrives by next morning.
+        # No checkin data yet — attendance was created from leave approval.
+        # Start as HD/A immediately. after_insert will flip to HD/P only when
+        # a valid IN+OUT pair arrives. Never assume the employee will come in.
         doc.leave_application = leave.name
-        doc.half_day_status = "Present"
+        doc.half_day_status = "Absent"
 
 
 # ─────────────────────────────────────────────
