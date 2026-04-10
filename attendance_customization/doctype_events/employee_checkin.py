@@ -25,10 +25,15 @@ def after_insert(doc, method):
               • Leave was approved, only IN existed → "Absent". OUT arrives → "Present".
               • Leave was approved, both existed → already "Present", no change.
 
-        BRANCH B — leave_application NOT set (6 AM checker removed it):
-            Biometric-delay case. Re-link leave_application only when pair is complete.
-            - Pair complete → restore leave_application + half_day_status = "Present".
-            - Pair incomplete → do nothing; wait for the other punch.
+        BRANCH B — leave_application NOT set. Two sub-cases:
+            B1) 6 AM checker removed it (biometric delay): re-link leave_application
+                only when the pair is now complete.
+                - Pair complete → restore leave_application + half_day_status = "Present".
+                - Pair incomplete → do nothing; wait for the other punch.
+            B2) Attendance was created from an Attendance Request (never had a
+                leave_application): just set half_day_status based on pair.
+                - Pair complete → half_day_status = "Present".
+                - Pair incomplete → do nothing.
 
         Untyped checkins (log_type blank): can't determine pair from type alone,
         so if the attendance already has in_time set, treat the untyped punch as
@@ -95,8 +100,10 @@ def after_insert(doc, method):
             update["half_day_status"] = "Absent"
 
     else:
-        # leave_application was removed by the 6 AM checker (biometric delay).
-        # Restore it only when the pair is complete — don't restore on a single punch.
+        # leave_application is not set. Two sub-cases:
+        # A) 6 AM checker removed it (biometric delay) → restore Leave Application.
+        # B) Attendance was created from an Attendance Request (never had a
+        #    leave_application) → just set half_day_status based on pair.
         if has_pair:
             leave = frappe.db.get_value(
                 "Leave Application",
@@ -111,9 +118,26 @@ def after_insert(doc, method):
                 as_dict=True,
             )
             if leave:
+                # Sub-case A: biometric delay — restore leave_application and HD/P.
                 update["leave_application"] = leave.name
                 update["leave_type"] = leave.leave_type
                 update["half_day_status"] = "Present"
+            else:
+                # Sub-case B: no Leave Application — check for Attendance Request.
+                # Attendance Requests never set leave_application on attendance,
+                # so the absence of leave_application is intentional here.
+                att_request = frappe.db.get_value(
+                    "Attendance Request",
+                    {
+                        "employee": doc.employee,
+                        "half_day_date": checkin_date,
+                        "half_day": 1,
+                        "docstatus": 1,
+                    },
+                    "name",
+                )
+                if att_request:
+                    update["half_day_status"] = "Present"
 
     # ── Step 4: persist ───────────────────────────────────────────────────────
     if update:

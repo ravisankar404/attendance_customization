@@ -44,6 +44,13 @@ doc_events = {
         "on_update_after_submit": "attendance_customization.doctype_events.leave_application.on_update_after_submit",
         "on_cancel":              "attendance_customization.doctype_events.leave_application.on_cancel",
     },
+    "Attendance Request": {
+        # After HRMS creates/updates the Half Day attendance, link any unlinked
+        # checkins and correct half_day_status based on the actual IN+OUT pair.
+        # Needed because HRMS uses db_set() (bypasses validate) when an
+        # attendance record already exists for the date.
+        "on_submit": "attendance_customization.doctype_events.attendance_request.on_submit",
+    },
 }
 
 # Override DocType Classes

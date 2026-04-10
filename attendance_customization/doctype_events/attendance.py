@@ -146,6 +146,12 @@ def _ensure_half_day_attendance(doc):
     )
 
     if not leave:
+        # No Leave Application found. If this is an Attendance Request half day,
+        # correct half_day_status based on pair completeness. validate() does run
+        # for newly-created attendances (but NOT for existing ones updated via
+        # db_set — that path is handled by attendance_request.on_submit).
+        if doc.status == "Half Day":
+            _fix_attendance_request_half_day(doc)
         return
 
     # Upgrade to Half Day regardless of what HRMS computed.
@@ -167,6 +173,49 @@ def _ensure_half_day_attendance(doc):
         # Start as HD/A immediately. after_insert will flip to HD/P only when
         # a valid IN+OUT pair arrives. Never assume the employee will come in.
         doc.leave_application = leave.name
+        doc.half_day_status = "Absent"
+
+
+# ─────────────────────────────────────────────
+# Attendance Request half-day correction
+# ─────────────────────────────────────────────
+
+def _fix_attendance_request_half_day(doc):
+    """
+    Set half_day_status for Half Day attendances created via Attendance Request.
+
+    Attendance Requests don't create a Leave Application — they regularize
+    attendance directly. The leave_application field on attendance is never set,
+    so _ensure_half_day_attendance() skips the record entirely.
+
+    HRMS also doesn't set half_day_status at all, so it defaults to NULL
+    (rendered as "Absent" in the Monthly Attendance Sheet).
+
+    Called when:
+      - A new Half Day attendance is created from an Attendance Request and
+        validate() fires during doc.submit() (no prior attendance existed).
+      - An existing attendance is re-saved through the UI.
+
+    For the db_set() bypass case (prior attendance updated by HRMS without
+    triggering validate), attendance_request.on_submit() handles it instead.
+    """
+    att_request = frappe.db.get_value(
+        "Attendance Request",
+        {
+            "employee": doc.employee,
+            "half_day_date": doc.attendance_date,
+            "half_day": 1,
+            "docstatus": 1,
+        },
+        "name",
+    )
+
+    if not att_request:
+        return
+
+    if doc.in_time and doc.out_time:
+        doc.half_day_status = "Present"
+    else:
         doc.half_day_status = "Absent"
 
 
