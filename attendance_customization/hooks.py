@@ -45,11 +45,15 @@ doc_events = {
         "on_cancel":              "attendance_customization.doctype_events.leave_application.on_cancel",
     },
     "Attendance Request": {
-        # After HRMS creates/updates the Half Day attendance, link any unlinked
-        # checkins and correct half_day_status based on the actual IN+OUT pair.
-        # Needed because HRMS uses db_set() (bypasses validate) when an
-        # attendance record already exists for the date.
+        # on_submit: after HRMS creates/updates the Half Day attendance, link any
+        # unlinked checkins and correct half_day_status based on IN+OUT pair.
+        # Needed because HRMS uses db_set() (bypasses validate) when an attendance
+        # record already exists for the date.
+        #
+        # on_cancel: HRMS cancels the attendance but leaves Employee Checkin records
+        # still pointing to it. Unlink them so re-submission can re-link correctly.
         "on_submit": "attendance_customization.doctype_events.attendance_request.on_submit",
+        "on_cancel": "attendance_customization.doctype_events.attendance_request.on_cancel",
     },
 }
 

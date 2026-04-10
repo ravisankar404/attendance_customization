@@ -40,6 +40,29 @@ def on_submit(doc, method):
     _sync_half_day_status(doc.employee, doc.half_day_date)
 
 
+def on_cancel(doc, method):
+    """
+    Fires AFTER HRMS's own AttendanceRequest.on_cancel() cancels the
+    Half Day attendance record (docstatus → 2).
+
+    PROBLEM this fixes:
+        HRMS cancels the attendance but does NOT unlink the Employee Checkin
+        records that point to it. Those checkins still have:
+            attendance = <cancelled-attendance-name>
+        When the Attendance Request is re-submitted, _link_unlinked_checkins()
+        searches for checkins WHERE attendance IS NOT SET — it finds none —
+        so the new attendance is created with no in_time/out_time → "Absent" ✗.
+
+    FIX:
+        After HRMS cancels the attendance, unlink all its Employee Checkins
+        so they are available for re-linking on re-submission.
+    """
+    if not (doc.half_day and doc.half_day_date):
+        return
+
+    _unlink_checkins_from_cancelled_attendance(doc.employee, doc.half_day_date)
+
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
@@ -115,6 +138,49 @@ def _link_unlinked_checkins(employee, half_day_date):
             len(checkins), attendance.name, employee, half_day_date
         )
     )
+
+
+def _unlink_checkins_from_cancelled_attendance(employee, half_day_date):
+    """
+    After Attendance Request cancellation, HRMS has already cancelled the
+    attendance (docstatus=2). Find that cancelled attendance and set
+    attendance=NULL on all its linked Employee Checkin records so they are
+    free to be re-linked when the Attendance Request is re-submitted.
+
+    Mirrors leave_application._unlink_checkins() for the Attendance Request path.
+    """
+    cancelled_attendances = frappe.get_all(
+        "Attendance",
+        filters={
+            "employee": employee,
+            "attendance_date": half_day_date,
+            "status": "Half Day",
+            "docstatus": 2,
+        },
+        fields=["name"],
+    )
+
+    if not cancelled_attendances:
+        return
+
+    total_unlinked = 0
+    for record in cancelled_attendances:
+        linked_checkins = frappe.get_all(
+            "Employee Checkin",
+            filters={"attendance": record.name},
+            fields=["name"],
+        )
+        for checkin in linked_checkins:
+            frappe.db.set_value("Employee Checkin", checkin.name, "attendance", None)
+        total_unlinked += len(linked_checkins)
+
+    if total_unlinked:
+        frappe.logger().info(
+            "attendance_request.on_cancel: unlinked {} checkin(s) from cancelled "
+            "Half Day attendance(s) on {} (employee={})".format(
+                total_unlinked, half_day_date, employee
+            )
+        )
 
 
 def _sync_half_day_status(employee, half_day_date):
