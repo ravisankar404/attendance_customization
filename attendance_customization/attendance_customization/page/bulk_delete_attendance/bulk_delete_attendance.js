@@ -5,6 +5,9 @@ frappe.pages["bulk-delete-attendance"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 
+
+	
+
 	frappe.breadcrumbs.add("HR");
 
 	// ── State ──────────────────────────────────────────────────────────────
