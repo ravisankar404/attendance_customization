@@ -111,6 +111,13 @@ def _link_checkins(leave_doc):
     )
 
     if not checkins:
+        # No unlinked checkins found — mark_attendance may have already run before
+        # the leave was approved and linked them itself.  In that case the attendance
+        # already has in_time + out_time, but half_day_status was never set (HRMS
+        # used db_set to flip status→Half Day, bypassing validate).  Sync it now so
+        # the Monthly Attendance Sheet shows HD/P instead of HD/A.
+        if attendance.in_time and attendance.out_time:
+            frappe.db.set_value("Attendance", attendance.name, "half_day_status", "Present")
         return
 
     in_time = attendance.in_time
